@@ -41,7 +41,7 @@ const getFriendlyAuthError = (error) => {
 // --- Main App Component ---
 const App = () => {
     // --- State Management ---
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'unauthenticated', 'loading_profile', 'ready'
+    const [appState, setAppState] = useState('initializing'); // 'initializing', 'unauthenticated', 'loading_profile', 'ready', 'error'
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
@@ -100,7 +100,6 @@ const App = () => {
                 const profileData = { id: docSnap.id, ...docSnap.data() };
                 setUserProfile(profileData);
                 
-                // Now that we have the profile and clinicId, fetch all clinic data
                 const clinicId = profileData.clinicId;
                 let unsubscribers = [];
 
@@ -125,12 +124,11 @@ const App = () => {
                     }));
                 });
                 
-                setAppState('ready'); // All data listeners are attached, app is ready
+                setAppState('ready');
                 
                 return () => unsubscribers.forEach(unsub => unsub());
 
             } else {
-                // Inconsistent state, log out
                 signOut(auth);
             }
         }, (err) => {
@@ -155,7 +153,6 @@ const App = () => {
             batch.set(userProfileRef, { email: newUser.email, clinicId: clinicRef.id, role: 'owner' });
             await batch.commit();
         } catch (error) {
-            console.error("Sign up error:", error.code, error.message);
             throw error;
         }
     };
@@ -165,7 +162,6 @@ const App = () => {
         try {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
-            console.error("Login error:", error.code, error.message);
             throw error;
         }
     };
@@ -175,7 +171,6 @@ const App = () => {
         try {
             await sendPasswordResetEmail(auth, email);
         } catch (error) {
-            console.error("Forgot password error:", error.code, error.message);
             throw error;
         }
     };
@@ -235,6 +230,19 @@ const App = () => {
     const openModal = (type) => { setIsModalOpen(true); setModalContent(type); };
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
 
+    // --- RENDER LOGIC ---
+    if (appState === 'initializing' || appState === 'loading_profile') {
+        return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
+    }
+    
+    if (appState === 'error') {
+         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{error}</div></div>;
+    }
+
+    if (appState === 'unauthenticated' || !user) {
+        return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
+    }
+
     const renderPage = () => {
         switch (page) {
             case 'settings': return <SettingsPage clinic={clinic} />;
@@ -257,18 +265,6 @@ const App = () => {
             default: return null;
         }
     };
-
-    if (appState !== 'ready') {
-        return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
-    }
-    
-    if (error) {
-         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{error}</div></div>;
-    }
-
-    if (!user) {
-        return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
-    }
 
     return (
         <div className="bg-gray-100 text-gray-900 min-h-screen font-sans">
