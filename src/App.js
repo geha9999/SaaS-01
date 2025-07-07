@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send } from 'lucide-react';
 
 // --- Firebase Configuration ---
-// These will be provided by Vercel Environment Variables later
+// These are provided by Vercel Environment Variables
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_API_KEY,
     authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -30,6 +30,7 @@ const App = () => {
     const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [payments, setPayments] = useState([]);
+    const [staff, setStaff] = useState([]);
     
     // UI State
     const [page, setPage] = useState('dashboard');
@@ -52,11 +53,7 @@ const App = () => {
                 setIsAuthReady(true);
                 if (!user) {
                     // Clear all data on logout
-                    setUserProfile(null);
-                    setClinic(null);
-                    setPatients([]);
-                    setAppointments([]);
-                    setPayments([]);
+                    setUserProfile(null); setClinic(null); setPatients([]); setAppointments([]); setPayments([]); setStaff([]);
                     setIsLoading(false);
                 }
             });
@@ -80,23 +77,25 @@ const App = () => {
                     setUserProfile(profileData);
                     
                     const clinicRef = doc(db, "clinics", profileData.clinicId);
-                    const unsubClinic = onSnapshot(clinicRef, (clinicSnap) => {
-                        if (clinicSnap.exists()) {
-                            setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
-                        }
-                    });
-                    unsubscribers.push(unsubClinic);
+                    unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
+                        if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
+                    }));
+
+                    // Fetch Staff
+                    const staffQuery = query(collection(db, "users"), where("clinicId", "==", profileData.clinicId));
+                    unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
+                         setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                    }));
 
                     const collections = ['patients', 'appointments', 'payments'];
                     collections.forEach(colName => {
                         const dataQuery = query(collection(db, `clinics/${profileData.clinicId}/${colName}`));
-                        const unsubData = onSnapshot(dataQuery, (snapshot) => {
+                        unsubscribers.push(onSnapshot(dataQuery, (snapshot) => {
                             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                             if (colName === 'patients') setPatients(data);
                             if (colName === 'appointments') setAppointments(data.map(a => ({...a, dateTime: a.dateTime?.toDate() })));
                             if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
-                        }, (err) => console.error(`Error fetching ${colName}:`, err));
-                        unsubscribers.push(unsubData);
+                        }));
                     });
                 } else {
                     setUserProfile(null);
@@ -108,13 +107,13 @@ const App = () => {
         return () => unsubscribers.forEach(unsub => unsub());
     }, [isAuthReady, user, db]);
 
-    // --- Authentication Handlers ---
+    // --- User Actions ---
     const handleSignUp = async (email, password, clinicName) => {
+        // This function will be enhanced later to check for pending invitations
         if (!auth || !db) return;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
-
             const batch = writeBatch(db);
             const clinicRef = doc(collection(db, "clinics"));
             batch.set(clinicRef, {
@@ -130,7 +129,6 @@ const App = () => {
                 role: 'owner'
             });
             await batch.commit();
-            closeModal();
         } catch (error) {
             console.error("Sign up error:", error);
             alert(`Sign up failed: ${error.message}`);
@@ -141,7 +139,6 @@ const App = () => {
         if (!auth) return;
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            closeModal();
         } catch (error) {
             console.error("Login error:", error);
             alert(`Login failed: ${error.message}`);
@@ -154,58 +151,62 @@ const App = () => {
         setPage('dashboard');
     };
 
-    const getClinicId = () => userProfile?.clinicId;
+    const handleInviteStaff = async ({ email, role }) => {
+        if (!db || !userProfile || !clinic) {
+            alert("Error: Not logged in or clinic data missing.");
+            return;
+        }
+        try {
+            await addDoc(collection(db, "invitations"), {
+                clinicId: userProfile.clinicId,
+                clinicName: clinic.name,
+                invitedBy: user.uid,
+                email: email.toLowerCase(), // Store email in lowercase for case-insensitive lookup
+                role: role,
+                status: "pending",
+                createdAt: serverTimestamp()
+            });
+            alert(`Invitation sent to ${email}!`);
+            closeModal();
+        } catch (e) {
+            console.error("Error sending invitation: ", e);
+            alert("Failed to send invitation.");
+        }
+    };
 
+    // --- Data Submission Handlers ---
+    const getClinicId = () => userProfile?.clinicId;
     const handleAddPatient = async (patientData) => {
         const clinicId = getClinicId();
         if (!db || !clinicId) return;
-        try {
-            await addDoc(collection(db, `clinics/${clinicId}/patients`), { ...patientData, createdAt: serverTimestamp() });
-            closeModal();
-        } catch (e) { console.error("Error adding patient: ", e); alert("Failed to add patient."); }
+        await addDoc(collection(db, `clinics/${clinicId}/patients`), { ...patientData, createdAt: serverTimestamp() });
+        closeModal();
     };
-
     const handleAddAppointment = async (appointmentData) => {
         const clinicId = getClinicId();
         if (!db || !clinicId) return;
         const selectedPatient = patients.find(p => p.id === appointmentData.patientId);
-        try {
-            await addDoc(collection(db, `clinics/${clinicId}/appointments`), {
-                ...appointmentData,
-                patientName: selectedPatient ? selectedPatient.name : 'Unknown',
-                dateTime: new Date(appointmentData.dateTime),
-                status: 'Scheduled',
-                createdAt: serverTimestamp()
-            });
-            closeModal();
-        } catch (e) { console.error("Error adding appointment: ", e); alert("Failed to add appointment."); }
+        await addDoc(collection(db, `clinics/${clinicId}/appointments`), {
+            ...appointmentData, patientName: selectedPatient?.name || 'Unknown', dateTime: new Date(appointmentData.dateTime), status: 'Scheduled', createdAt: serverTimestamp()
+        });
+        closeModal();
     };
-
     const handleAddPayment = async (paymentData) => {
         const clinicId = getClinicId();
         if (!db || !clinicId) return;
         const selectedPatient = patients.find(p => p.id === paymentData.patientId);
-        try {
-            await addDoc(collection(db, `clinics/${clinicId}/payments`), {
-                ...paymentData,
-                patientName: selectedPatient ? selectedPatient.name : 'Unknown',
-                amount: parseFloat(paymentData.amount),
-                date: new Date(paymentData.date),
-                status: 'Paid',
-                createdAt: serverTimestamp()
-            });
-            closeModal();
-        } catch (e) { console.error("Error adding payment: ", e); alert("Failed to add payment."); }
+        await addDoc(collection(db, `clinics/${clinicId}/payments`), {
+            ...paymentData, patientName: selectedPatient?.name || 'Unknown', amount: parseFloat(paymentData.amount), date: new Date(paymentData.date), status: 'Paid', createdAt: serverTimestamp()
+        });
+        closeModal();
     };
-
     const updateAppointmentStatus = async (id, status) => {
         const clinicId = getClinicId();
         if (!db || !clinicId) return;
-        try {
-            await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
-        } catch (e) { console.error("Error updating status: ", e); alert("Failed to update status."); }
+        await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
     };
 
+    // --- Modal and Page Rendering ---
     const openModal = (type) => { setIsModalOpen(true); setModalContent(type); };
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
 
@@ -226,6 +227,7 @@ const App = () => {
         }
 
         switch (page) {
+            case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
             case 'patients': return <PatientsPage patients={patients} />;
             case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} />;
             case 'payments': return <PaymentsPage payments={payments} />;
@@ -236,6 +238,7 @@ const App = () => {
     const renderModal = () => {
         if (!isModalOpen) return null;
         switch (modalContent) {
+            case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
             case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
             case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
             case 'addPayment': return <AddPaymentModal onClose={closeModal} onSubmit={handleAddPayment} patients={patients} />;
@@ -260,45 +263,27 @@ const App = () => {
     );
 };
 
+// --- Pages ---
 const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
     const [isLoginView, setIsLoginView] = useState(true);
     const [formData, setFormData] = useState({ email: '', password: '', clinicName: '' });
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-    
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (isLoginView) {
-            onLoginSubmit(formData.email, formData.password);
-        } else {
-            onSignUpSubmit(formData.email, formData.password, formData.clinicName);
-        }
-    };
-
+    const handleSubmit = (e) => { e.preventDefault(); isLoginView ? onLoginSubmit(formData.email, formData.password) : onSignUpSubmit(formData.email, formData.password, formData.clinicName); };
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
             <div className="w-full max-w-sm mx-auto">
                 <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2"><Building />TherapySaaS</h1>
                 <div className="bg-white p-8 rounded-xl shadow-lg">
-                    <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">
-                        {isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}
-                    </h2>
-                    <p className="text-center text-gray-500 mb-6">
-                        {isLoginView ? 'Sign in to manage your clinic' : 'to start your 30-day free trial'}
-                    </p>
+                    <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">{isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}</h2>
+                    <p className="text-center text-gray-500 mb-6">{isLoginView ? 'Sign in to manage your clinic' : 'to start your 30-day free trial'}</p>
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {!isLoginView && (
-                            <Input label="Clinic Name" name="clinicName" type="text" value={formData.clinicName} onChange={handleChange} required />
-                        )}
+                        {!isLoginView && (<Input label="Clinic Name" name="clinicName" type="text" value={formData.clinicName} onChange={handleChange} required />)}
                         <Input label="Your Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
                         <Input label="Password" name="password" type="password" value={formData.password} onChange={handleChange} required />
-                        <Button type="submit" className="w-full !mt-6">
-                            {isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>}
-                        </Button>
+                        <Button type="submit" className="w-full !mt-6">{isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>}</Button>
                     </form>
                     <div className="mt-6 text-center">
-                        <button onClick={() => setIsLoginView(!isLoginView)} className="text-sm text-blue-600 hover:underline">
-                            {isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}
-                        </button>
+                        <button onClick={() => setIsLoginView(!isLoginView)} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
                     </div>
                 </div>
             </div>
@@ -306,64 +291,42 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
     );
 };
 
-const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
-    const navItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'patients', label: 'Patients', icon: Users },
-        { id: 'appointments', label: 'Appointments', icon: Calendar },
-        { id: 'payments', label: 'Payments', icon: DollarSign },
-    ];
-
-    return (
-        <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full">
-            <div className="px-8 py-6">
-                <h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1>
-            </div>
-            <nav className="flex-1 px-4">
-                <div className="px-4 py-2 mb-2">
-                    <p className="text-sm text-gray-500">CLINIC</p>
-                    <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p>
-                </div>
-                {navItems.map(item => (
-                    <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}>
-                        <item.icon className="w-5 h-5 mr-3" />
-                        <span className="font-medium">{item.label}</span>
-                    </button>
-                ))}
-            </nav>
-            <div className="p-4 border-t">
-                <button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700">
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Logout
+const StaffPage = ({ staff, onInviteClick, userRole }) => (
+    <div>
+        <div className="flex justify-end mb-4">
+            {userRole === 'owner' && (
+                 <button onClick={onInviteClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow">
+                    <UserPlus size={20} />
+                    <span>Invite New Member</span>
                 </button>
+            )}
+        </div>
+        <Card>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="border-b">
+                            <th className="p-4">Email</th>
+                            <th className="p-4">Role</th>
+                            <th className="p-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {staff.length > 0 ? staff.map(s => (
+                            <tr key={s.id} className="border-b hover:bg-gray-50">
+                                <td className="p-4 font-medium">{s.email}</td>
+                                <td className="p-4 text-gray-500 capitalize">{s.role}</td>
+                                <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td>
+                            </tr>
+                        )) : <tr><td colSpan="3" className="text-center p-8 text-gray-500">No staff members found.</td></tr>}
+                    </tbody>
+                </table>
             </div>
-        </aside>
-    );
-};
+        </Card>
+    </div>
+);
 
-const BottomNav = ({ page, setPage, onLogout }) => {
-    const navItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'patients', label: 'Patients', icon: Users },
-        { id: 'appointments', label: 'Appointments', icon: Calendar },
-        { id: 'payments', label: 'Payments', icon: DollarSign },
-    ];
-    return (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50">
-            {navItems.map(item => (
-                <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/5 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <item.icon className="w-6 h-6" />
-                    <span className="text-xs mt-1">{item.label}</span>
-                </button>
-            ))}
-             <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/5">
-                <LogOut className="w-6 h-6" />
-                <span className="text-xs mt-1">Logout</span>
-            </button>
-        </nav>
-    );
-};
-
+// --- Other pages remain largely the same ---
 const DashboardPage = ({ patients, appointments, payments }) => {
     const upcomingAppointments = useMemo(() => appointments.filter(a => a.dateTime && a.dateTime > new Date()).sort((a, b) => a.dateTime - b.dateTime).slice(0, 5), [appointments]);
     const monthlyRevenue = useMemo(() => {
@@ -429,9 +392,75 @@ const PaymentsPage = ({ payments }) => {
      const sortedPayments = useMemo(() => [...payments].sort((a,b) => (b.date || 0) - (a.date || 0)), [payments]);
     return ( <Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Patient</th> <th className="p-4 hidden md:table-cell">Date</th> <th className="p-4 hidden sm:table-cell">Method</th> <th className="p-4">Amount</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {sortedPayments.length > 0 ? sortedPayments.map(p => ( <tr key={p.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{p.patientName}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{p.date ? p.date.toLocaleDateString('id-ID') : 'No Date'}</td> <td className="p-4 text-gray-500 hidden sm:table-cell">{p.method}</td> <td className="p-4 font-semibold text-green-600">Rp{p.amount.toLocaleString('id-ID')}</td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="5" className="text-center p-8 text-gray-500">No payments found.</td></tr>} </tbody> </table> </div> </Card> );
 };
+
+
+// --- Components ---
+const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
+    const navItems = [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'staff', label: 'Staff', icon: UsersRound },
+        { id: 'patients', label: 'Patients', icon: Users },
+        { id: 'appointments', label: 'Appointments', icon: Calendar },
+        { id: 'payments', label: 'Payments', icon: DollarSign },
+    ];
+    return (
+        <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full">
+            <div className="px-8 py-6"><h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1></div>
+            <nav className="flex-1 px-4">
+                <div className="px-4 py-2 mb-2">
+                    <p className="text-sm text-gray-500">CLINIC</p>
+                    <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p>
+                </div>
+                {navItems.map(item => (
+                    <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}>
+                        <item.icon className="w-5 h-5 mr-3" />
+                        <span className="font-medium">{item.label}</span>
+                    </button>
+                ))}
+            </nav>
+            <div className="p-4 border-t"><button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700"><LogOut className="w-4 h-4 mr-2" />Logout</button></div>
+        </aside>
+    );
+};
+const BottomNav = ({ page, setPage, onLogout }) => {
+    const navItems = [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'staff', label: 'Staff', icon: UsersRound },
+        { id: 'patients', label: 'Patients', icon: Users },
+        { id: 'appointments', label: 'Appointments', icon: Calendar },
+    ];
+    return (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50">
+            {navItems.map(item => (
+                <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/5 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <item.icon className="w-6 h-6" />
+                    <span className="text-xs mt-1">{item.label}</span>
+                </button>
+            ))}
+             <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/5"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button>
+        </nav>
+    );
+};
 const Header = ({ page, onAddClick }) => { const title = page.charAt(0).toUpperCase() + page.slice(1); const canAdd = ['patients', 'appointments', 'payments'].includes(page); return ( <div className="flex justify-between items-center pb-4 mb-4 md:mb-0 border-b"> <h2 className="text-3xl font-bold">{title}</h2> {canAdd && ( <button onClick={onAddClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow"> <PlusCircle size={20} /> <span className="hidden sm:inline">Add New</span> </button> )} </div> ); };
 const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
+const InviteStaffModal = ({ onClose, onSubmit }) => {
+    const [formData, setFormData] = useState({ email: '', role: 'doctor' });
+    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); };
+    return (
+        <Modal onClose={onClose} title="Invite New Staff Member">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
+                <Select label="Role" name="role" value={formData.role} onChange={handleChange}>
+                    <option value="doctor">Doctor</option>
+                    <option value="admin">Admin</option>
+                </Select>
+                <Button type="submit" className="w-full"><Send className="mr-2" />Send Invitation</Button>
+            </form>
+        </Modal>
+    );
+};
 const AddPatientModal = ({ onClose, onSubmit }) => { const [formData, setFormData] = useState({ name: '', email: '', phone: '' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Add New Patient"> <form onSubmit={handleSubmit} className="space-y-4"> <Input label="Full Name" name="name" value={formData.name} onChange={handleChange} required /> <Input label="Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required /> <Input label="Phone Number" name="phone" type="tel" value={formData.phone} onChange={handleChange} /> <Button type="submit" className="w-full">Save Patient</Button> </form> </Modal> ); };
 const AddAppointmentModal = ({ onClose, onSubmit, patients }) => { const [formData, setFormData] = useState({ patientId: '', dateTime: '' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Schedule Appointment"> <form onSubmit={handleSubmit} className="space-y-4"> <Select label="Patient" name="patientId" value={formData.patientId} onChange={handleChange} required> <option value="" disabled>Select a patient</option> {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)} </Select> <Input label="Date and Time" name="dateTime" type="datetime-local" value={formData.dateTime} onChange={handleChange} required /> <Button type="submit" className="w-full">Schedule Appointment</Button> </form> </Modal> ); };
 const AddPaymentModal = ({ onClose, onSubmit, patients }) => { const [formData, setFormData] = useState({ patientId: '', amount: '', date: '', method: 'Card' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Record Payment"> <form onSubmit={handleSubmit} className="space-y-4"> <Select label="Patient" name="patientId" value={formData.patientId} onChange={handleChange} required> <option value="" disabled>Select a patient</option> {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)} </Select> <Input label="Amount (IDR)" name="amount" type="number" step="1000" value={formData.amount} onChange={handleChange} required /> <Input label="Payment Date" name="date" type="date" value={formData.date} onChange={handleChange} required /> <Select label="Payment Method" name="method" value={formData.method} onChange={handleChange} required> <option>Card</option> <option>Cash</option> <option>Bank Transfer</option> <option>GoPay</option> </Select> <Button type="submit" className="w-full">Record Payment</Button> </form> </Modal> ); };
