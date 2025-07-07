@@ -243,44 +243,49 @@ const App = () => {
         return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
     }
 
-    const renderPage = () => {
-        switch (page) {
-            case 'settings': return <SettingsPage clinic={clinic} />;
-            case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
-            case 'patients': return <PatientsPage patients={patients} />;
-            case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} />;
-            case 'payments': return <PaymentsPage payments={payments} />;
-            case 'dashboard': default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
-        }
-    };
+    if (appState === 'ready' && user && userProfile) {
+        const renderPage = () => {
+            switch (page) {
+                case 'settings': return <SettingsPage clinic={clinic} />;
+                case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
+                case 'patients': return <PatientsPage patients={patients} />;
+                case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} />;
+                case 'payments': return <PaymentsPage payments={payments} />;
+                case 'dashboard': default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
+            }
+        };
 
-    const renderModal = () => {
-        if (!isModalOpen) return null;
-        switch (modalContent) {
-            case 'forgotPassword': return <ForgotPasswordModal onClose={closeModal} onSubmit={handleForgotPassword} />;
-            case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
-            case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
-            case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
-            case 'addPayment': return <AddPaymentModal onClose={closeModal} onSubmit={handleAddPayment} patients={patients} />;
-            default: return null;
-        }
-    };
+        const renderModal = () => {
+            if (!isModalOpen) return null;
+            switch (modalContent) {
+                case 'forgotPassword': return <ForgotPasswordModal onClose={closeModal} onSubmit={handleForgotPassword} />;
+                case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
+                case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
+                case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
+                case 'addPayment': return <AddPaymentModal onClose={closeModal} onSubmit={handleAddPayment} patients={patients} />;
+                default: return null;
+            }
+        };
 
-    return (
-        <div className="bg-gray-100 text-gray-900 min-h-screen font-sans">
-            <div className="flex flex-col md:flex-row">
-                <Sidebar page={page} setPage={setPage} clinicName={clinic?.name} onLogout={handleLogout} />
-                <main className="flex-1 p-4 md:p-8 md:ml-64">
-                    <Header page={page} onAddClick={() => openModal(`add${page.charAt(0).toUpperCase() + page.slice(1, -1)}`)} />
-                    <div className="mt-8">
-                        {renderPage()}
-                    </div>
-                </main>
+        return (
+            <div className="bg-gray-100 text-gray-900 min-h-screen font-sans">
+                <div className="flex flex-col md:flex-row">
+                    <Sidebar page={page} setPage={setPage} clinicName={clinic?.name} onLogout={handleLogout} />
+                    <main className="flex-1 p-4 md:p-8 md:ml-64">
+                        <Header page={page} onAddClick={() => openModal(`add${page.charAt(0).toUpperCase() + page.slice(1, -1)}`)} />
+                        <div className="mt-8">
+                            {renderPage()}
+                        </div>
+                    </main>
+                </div>
+                {renderModal()}
+                <BottomNav page={page} setPage={setPage} onLogout={handleLogout} />
             </div>
-            {renderModal()}
-            <BottomNav page={page} setPage={setPage} onLogout={handleLogout} />
-        </div>
-    );
+        );
+    }
+
+    // Fallback loading screen
+    return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
 };
 
 // --- Pages ---
