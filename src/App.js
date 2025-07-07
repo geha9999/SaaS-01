@@ -99,6 +99,7 @@ const MainApp = ({ user, auth, db }) => {
     const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [payments, setPayments] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
     
     // --- Data Fetching Logic ---
     useEffect(() => {
@@ -142,6 +143,8 @@ const MainApp = ({ user, auth, db }) => {
                 if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
             }));
         });
+        
+        setIsLoading(false); // Set loading to false once all listeners are attached
         
         return () => unsubscribers.forEach(unsub => unsub());
     }, [userProfile, db]);
@@ -190,7 +193,7 @@ const MainApp = ({ user, auth, db }) => {
         await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
     };
 
-    if (!userProfile || !clinic) {
+    if (isLoading || !userProfile || !clinic) {
         return <LoadingSpinner message="Loading Clinic Data..." />;
     }
 
