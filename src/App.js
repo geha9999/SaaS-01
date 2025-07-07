@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, ShieldCheck, Mail } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, ShieldCheck, Mail, Settings as SettingsIcon } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // These are provided by Vercel Environment Variables
@@ -18,7 +18,6 @@ const firebaseConfig = {
 
 // --- Helper function for user-friendly error messages ---
 const getFriendlyAuthError = (error) => {
-    // Check if the error object and its code property exist
     if (!error || !error.code) {
         return 'An unexpected error occurred. Please check your connection and try again.';
     }
@@ -64,18 +63,25 @@ const App = () => {
 
     // --- Firebase Initialization ---
     useEffect(() => {
+        console.log("App initializing...");
         try {
+            if (!firebaseConfig.apiKey) {
+                console.error("Firebase config is missing. Check Vercel environment variables.");
+                setError("Application is not configured correctly. Please contact support.");
+                return;
+            }
             const app = initializeApp(firebaseConfig);
             const firestoreDb = getFirestore(app);
             const firebaseAuth = getAuth(app);
             setDb(firestoreDb);
             setAuth(firebaseAuth);
+            console.log("Firebase services initialized.");
 
             const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+                console.log("Auth state changed. User:", user ? user.uid : 'none');
                 setUser(user);
                 setIsAuthReady(true);
                 if (!user) {
-                    // Clear all data on logout
                     setUserProfile(null); setClinic(null); setPatients([]); setAppointments([]); setPayments([]); setStaff([]);
                     setIsLoading(false);
                 }
@@ -92,11 +98,13 @@ const App = () => {
     useEffect(() => {
         let unsubscribers = [];
         if (isAuthReady && user && db) {
+            console.log("User is authenticated, fetching profile...");
             setIsLoading(true);
             const userProfileRef = doc(db, "users", user.uid);
             const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const profileData = { id: docSnap.id, ...docSnap.data() };
+                    console.log("User profile found:", profileData);
                     setUserProfile(profileData);
                     
                     const clinicRef = doc(db, "clinics", profileData.clinicId);
@@ -104,7 +112,6 @@ const App = () => {
                         if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
                     }));
 
-                    // Fetch Staff
                     const staffQuery = query(collection(db, "users"), where("clinicId", "==", profileData.clinicId));
                     unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
                          setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -121,6 +128,7 @@ const App = () => {
                         }));
                     });
                 } else {
+                    console.log("User profile not found in database.");
                     setUserProfile(null);
                 }
                 setIsLoading(false);
@@ -133,24 +141,18 @@ const App = () => {
     // --- User Actions ---
     const handleSignUp = async (email, password, clinicName) => {
         if (!auth || !db) throw new Error("Authentication service not ready.");
+        console.log("Attempting to sign up with email:", email);
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
+            console.log("Firebase user created:", newUser.uid);
             const batch = writeBatch(db);
             const clinicRef = doc(collection(db, "clinics"));
-            batch.set(clinicRef, {
-                name: clinicName,
-                ownerId: newUser.uid,
-                createdAt: serverTimestamp(),
-                subscription: { plan: 'free', status: 'active' }
-            });
+            batch.set(clinicRef, { name: clinicName, ownerId: newUser.uid, createdAt: serverTimestamp(), subscription: { plan: 'free', status: 'active' } });
             const userProfileRef = doc(db, "users", newUser.uid);
-            batch.set(userProfileRef, {
-                email: newUser.email,
-                clinicId: clinicRef.id,
-                role: 'owner'
-            });
+            batch.set(userProfileRef, { email: newUser.email, clinicId: clinicRef.id, role: 'owner' });
             await batch.commit();
+            console.log("Clinic and user profile created in database.");
         } catch (error) {
             console.error("Sign up error:", error.code, error.message);
             throw error;
@@ -159,8 +161,10 @@ const App = () => {
 
     const handleLogin = async (email, password) => {
         if (!auth) throw new Error("Authentication service not ready.");
+        console.log("Attempting to log in with email:", email);
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            console.log("Login successful for user:", userCredential.user.uid);
         } catch (error) {
             console.error("Login error:", error.code, error.message);
             throw error;
@@ -171,13 +175,10 @@ const App = () => {
         if (!auth) throw new Error("Authentication service not ready.");
         try {
             await sendPasswordResetEmail(auth, email);
-            // We give a generic success message for security reasons, to not reveal which emails are registered.
             alert(`If an account exists for ${email}, a password reset link has been sent.`);
             closeModal();
         } catch (error) {
-            console.error("Forgot password error:", error.code, error.message);
-            // Still show a generic message to the user
-            alert(`If an account exists for ${email}, a password reset link has been sent.`);
+            alert(`Could not send reset email. Please check the address and try again.`);
             closeModal();
         }
     };
@@ -189,24 +190,14 @@ const App = () => {
     };
 
     const handleInviteStaff = async ({ email, role }) => {
-        if (!db || !userProfile || !clinic) {
-            alert("Error: Not logged in or clinic data missing.");
-            return;
-        }
+        if (!db || !userProfile || !clinic) return;
         try {
             await addDoc(collection(db, "invitations"), {
-                clinicId: userProfile.clinicId,
-                clinicName: clinic.name,
-                invitedBy: user.uid,
-                email: email.toLowerCase(),
-                role: role,
-                status: "pending",
-                createdAt: serverTimestamp()
+                clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
             });
             alert(`Invitation sent to ${email}!`);
             closeModal();
         } catch (e) {
-            console.error("Error sending invitation: ", e);
             alert("Failed to send invitation.");
         }
     };
@@ -264,6 +255,7 @@ const App = () => {
         }
 
         switch (page) {
+            case 'settings': return <SettingsPage clinic={clinic} />;
             case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
             case 'patients': return <PatientsPage patients={patients} />;
             case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} />;
@@ -392,6 +384,22 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit, onForgotPasswordClick }) => {
     );
 };
 
+const SettingsPage = ({ clinic }) => {
+    return (
+        <Card>
+            <h3 className="text-xl font-bold mb-4">Clinic Settings</h3>
+            <p className="text-gray-600">This is where you will be able to configure your clinic's profile, subscription, and payment settings.</p>
+            {clinic && (
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <p><strong>Clinic Name:</strong> {clinic.name}</p>
+                    <p><strong>Clinic ID:</strong> {clinic.id}</p>
+                    <p><strong>Subscription Plan:</strong> {clinic.subscription?.plan || 'N/A'}</p>
+                </div>
+            )}
+        </Card>
+    );
+};
+
 const StaffPage = ({ staff, onInviteClick, userRole }) => (
     <div>
         <div className="flex justify-end mb-4">
@@ -503,6 +511,7 @@ const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
         { id: 'patients', label: 'Patients', icon: Users },
         { id: 'appointments', label: 'Appointments', icon: Calendar },
         { id: 'payments', label: 'Payments', icon: DollarSign },
+        { id: 'settings', label: 'Settings', icon: SettingsIcon },
     ];
     return (
         <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full">
@@ -528,7 +537,7 @@ const BottomNav = ({ page, setPage, onLogout }) => {
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'staff', label: 'Staff', icon: Briefcase },
         { id: 'patients', label: 'Patients', icon: Users },
-        { id: 'appointments', label: 'Appointments', icon: Calendar },
+        { id: 'settings', label: 'Settings', icon: SettingsIcon },
     ];
     return (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50">
@@ -549,29 +558,44 @@ const ForgotPasswordModal = ({ onClose, onSubmit }) => {
     const [email, setEmail] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         setError('');
+        setSuccess(false);
         try {
             await onSubmit(email);
+            setSuccess(true);
         } catch (err) {
             setError(getFriendlyAuthError(err));
+        } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
         <Modal onClose={onClose} title="Reset Your Password">
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <p className="text-sm text-gray-600">Enter your email address and we will send you a link to reset your password.</p>
-                <Input label="Email Address" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting ? 'Sending...' : <><Mail className="mr-2" />Send Reset Link</>}
-                </Button>
-                {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-            </form>
+            {success ? (
+                <div className="text-center">
+                    <Mail className="mx-auto h-12 w-12 text-green-500" />
+                    <h3 className="mt-2 text-lg font-medium text-gray-900">Check your email</h3>
+                    <p className="mt-2 text-sm text-gray-500">If an account exists for that email, we have sent instructions to reset your password.</p>
+                    <div className="mt-4">
+                        <Button onClick={onClose} className="w-full">Close</Button>
+                    </div>
+                </div>
+            ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <p className="text-sm text-gray-600">Enter your email address and we will send you a link to reset your password.</p>
+                    <Input label="Email Address" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                        {isSubmitting ? 'Sending...' : <><Send className="mr-2" />Send Reset Link</>}
+                    </Button>
+                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                </form>
+            )}
         </Modal>
     );
 };
@@ -599,4 +623,4 @@ const Input = ({ label, ...props }) => ( <div> <label className="block text-sm f
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
 const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 
-export default App;
+export default A
