@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send, ShieldCheck, Mail } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UserCog, Send, ShieldCheck, Mail } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // These are provided by Vercel Environment Variables
@@ -492,7 +492,7 @@ const PaymentsPage = ({ payments }) => {
 const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'staff', label: 'Staff', icon: UsersRound },
+        { id: 'staff', label: 'Staff', icon: UserCog },
         { id: 'patients', label: 'Patients', icon: Users },
         { id: 'appointments', label: 'Appointments', icon: Calendar },
         { id: 'payments', label: 'Payments', icon: DollarSign },
@@ -519,7 +519,7 @@ const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
 const BottomNav = ({ page, setPage, onLogout }) => {
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'staff', label: 'Staff', icon: UsersRound },
+        { id: 'staff', label: 'Staff', icon: UserCog },
         { id: 'patients', label: 'Patients', icon: Users },
         { id: 'appointments', label: 'Appointments', icon: Calendar },
     ];
