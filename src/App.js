@@ -17,8 +17,12 @@ const firebaseConfig = {
 };
 
 // --- Helper function for user-friendly error messages ---
-const getFriendlyAuthError = (errorCode) => {
-    switch (errorCode) {
+const getFriendlyAuthError = (error) => {
+    // Check if the error object and its code property exist
+    if (!error || !error.code) {
+        return 'An unexpected error occurred. Please check your connection and try again.';
+    }
+    switch (error.code) {
         case 'auth/email-already-in-use':
             return 'This email address is already registered. Please try signing in instead.';
         case 'auth/wrong-password':
@@ -167,11 +171,14 @@ const App = () => {
         if (!auth) throw new Error("Authentication service not ready.");
         try {
             await sendPasswordResetEmail(auth, email);
+            // We give a generic success message for security reasons, to not reveal which emails are registered.
             alert(`If an account exists for ${email}, a password reset link has been sent.`);
             closeModal();
         } catch (error) {
             console.error("Forgot password error:", error.code, error.message);
-            throw error;
+            // Still show a generic message to the user
+            alert(`If an account exists for ${email}, a password reset link has been sent.`);
+            closeModal();
         }
     };
     
@@ -340,7 +347,7 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit, onForgotPasswordClick }) => {
                 await onSignUpSubmit(formData.email, formData.password, formData.clinicName);
             }
         } catch (error) {
-            setAuthError(getFriendlyAuthError(error.code));
+            setAuthError(getFriendlyAuthError(error));
             setIsSubmitting(false);
             generateCaptcha();
         }
@@ -550,7 +557,7 @@ const ForgotPasswordModal = ({ onClose, onSubmit }) => {
         try {
             await onSubmit(email);
         } catch (err) {
-            setError(getFriendlyAuthError(err.code));
+            setError(getFriendlyAuthError(err));
             setIsSubmitting(false);
         }
     };
