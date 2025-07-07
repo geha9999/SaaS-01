@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
@@ -34,7 +34,7 @@ const Button = ({ children, className = '', ...props }) => ( <button {...props} 
 const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
-const LoadingSpinner = () => (<div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>);
+const LoadingSpinner = ({ message = "Loading..." }) => (<div className="h-screen w-screen flex flex-col justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div><p className="mt-4 text-gray-600">{message}</p></div>);
 const ErrorDisplay = ({ message }) => (<div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{message}</div></div>);
 
 // --- Auth Page Component ---
@@ -43,27 +43,11 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     const [formData, setFormData] = useState({ email: '', password: '', clinicName: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [authError, setAuthError] = useState('');
-    const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: '' });
-    const [isCaptchaSolved, setIsCaptchaSolved] = useState(false);
-
-    useEffect(() => { generateCaptcha(); }, []);
-
-    const generateCaptcha = () => {
-        setCaptcha({ num1: Math.ceil(Math.random() * 10), num2: Math.ceil(Math.random() * 10), answer: '' });
-        setIsCaptchaSolved(false);
-    };
-
-    const handleCaptchaChange = (e) => {
-        const userAnswer = e.target.value;
-        setCaptcha(prev => ({ ...prev, answer: userAnswer }));
-        setIsCaptchaSolved(parseInt(userAnswer, 10) === captcha.num1 + captcha.num2);
-    };
-
+    
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
     
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!isCaptchaSolved) { setAuthError("Please solve the security question correctly."); return; }
         setIsSubmitting(true);
         setAuthError('');
         try {
@@ -72,7 +56,6 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
         } catch (error) {
             setAuthError(getFriendlyAuthError(error));
             setIsSubmitting(false);
-            generateCaptcha();
         }
     };
 
@@ -86,11 +69,7 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
                         {!isLoginView && (<Input label="Clinic Name" name="clinicName" type="text" value={formData.clinicName} onChange={handleChange} required />)}
                         <Input label="Your Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
                         <Input label="Password" name="password" type="password" value={formData.password} onChange={handleChange} required />
-                        <div className="flex items-center justify-between p-2 bg-gray-100 rounded-md">
-                           <label htmlFor="captcha" className="text-gray-600 font-medium"><ShieldCheck className="inline-block mr-2 text-green-500" size={20}/>What is {captcha.num1} + {captcha.num2}?</label>
-                           <input id="captcha" type="number" value={captcha.answer} onChange={handleCaptchaChange} className="w-20 p-2 text-center border rounded-md focus:ring-2 focus:ring-blue-500" required />
-                        </div>
-                        <Button type="submit" className="w-full !mt-6" disabled={isSubmitting || !isCaptchaSolved}>
+                        <Button type="submit" className="w-full !mt-6" disabled={isSubmitting}>
                             {isSubmitting ? 'Processing...' : (isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>)}
                         </Button>
                         {authError && <p className="text-red-500 text-sm mt-4 text-center">{authError}</p>}
@@ -99,7 +78,7 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
                         {isLoginView && (<button onClick={onForgotPasswordClick} className="text-blue-600 hover:underline">Forgot Password?</button>)}
                     </div>
                     <div className="mt-4 text-center">
-                        <button onClick={() => { setIsLoginView(!isLoginView); setAuthError(''); generateCaptcha(); }} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
+                        <button onClick={() => { setIsLoginView(!isLoginView); setAuthError(''); }} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
                     </div>
                 </div>
             </div>
@@ -130,7 +109,7 @@ const MainApp = ({ user, auth, db }) => {
             if (docSnap.exists()) {
                 setUserProfile({ id: docSnap.id, ...docSnap.data() });
             } else {
-                signOut(auth); // Inconsistent state, sign out
+                signOut(auth);
             }
         });
 
@@ -210,8 +189,8 @@ const MainApp = ({ user, auth, db }) => {
         await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
     };
 
-    if (!userProfile) {
-        return <LoadingSpinner />;
+    if (!userProfile || !clinic) {
+        return <LoadingSpinner message="Loading Clinic Data..." />;
     }
 
     const renderPage = () => {
@@ -300,7 +279,7 @@ const App = () => {
     const closeForgotPasswordModal = () => setIsModalOpen(false);
 
     if (appState === 'initializing') {
-        return <LoadingSpinner />;
+        return <LoadingSpinner message="Connecting to services..." />;
     }
     
     if (appState === 'error') {
