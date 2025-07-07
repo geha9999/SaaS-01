@@ -73,46 +73,48 @@ const App = () => {
 
                 const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
                     setUser(user);
-                    setIsAuthReady(true);
-                    if (!user) {
-                        setUserProfile(null);
-                        setClinic(null);
-                        setIsLoading(false);
-                    }
+                    setIsAuthReady(true); // This now only means the auth check has run
                 });
                 return () => unsubscribe();
             } else {
                  setError("Application is not configured correctly.");
                  setIsAuthReady(true);
-                 setIsLoading(false);
             }
         } catch (e) {
             console.error("Firebase Initialization Error:", e);
             setError("Could not connect to services.");
             setIsAuthReady(true);
-            setIsLoading(false);
         }
     }, []);
 
     // --- Profile, Clinic, and Data Fetching ---
     useEffect(() => {
-        if (!isAuthReady || !user || !db) {
-            if(isAuthReady && !user) setIsLoading(false);
-            return;
-        };
+        if (!isAuthReady) return; // Wait for auth service to be ready
 
+        if (!user) {
+            // If no user, clear everything and stop loading.
+            setUserProfile(null);
+            setClinic(null);
+            setPatients([]);
+            setAppointments([]);
+            setPayments([]);
+            setStaff([]);
+            setIsLoading(false);
+            return;
+        }
+
+        // If there IS a user, start loading their data.
         setIsLoading(true);
         const userProfileRef = doc(db, "users", user.uid);
         const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
             if (docSnap.exists()) {
                 const profileData = { id: docSnap.id, ...docSnap.data() };
                 setUserProfile(profileData);
+                // The next effect will handle fetching clinic data based on this profile.
             } else {
-                // This can happen if a user is authenticated but their DB entry was deleted.
-                // Log them out to fix the inconsistent state.
-                if (auth) {
-                    signOut(auth);
-                }
+                // This is an inconsistent state (auth user exists, but no profile).
+                // Log them out to reset.
+                signOut(auth);
             }
         }, (err) => {
             console.error("Error fetching user profile:", err);
@@ -123,13 +125,11 @@ const App = () => {
         return () => unsubProfile();
     }, [isAuthReady, user, db, auth]);
 
-    // This effect runs when the user profile (and thus clinicId) is loaded
+    // This effect runs ONLY when the user profile (and thus clinicId) is loaded
     useEffect(() => {
-        if (!userProfile || !db) {
-            setPatients([]);
-            setAppointments([]);
-            setPayments([]);
-            setStaff([]);
+        if (!userProfile) {
+            // If profile is null, we are either logged out or still loading it.
+            // The previous effect handles this, so we just wait.
             return;
         };
         
@@ -157,6 +157,7 @@ const App = () => {
             }));
         });
 
+        // All data listeners are set up, so we can stop loading.
         setIsLoading(false);
         
         return () => unsubscribers.forEach(unsub => unsub());
@@ -255,7 +256,7 @@ const App = () => {
     const openModal = (type) => { setIsModalOpen(true); setModalContent(type); };
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
 
-    if (!isAuthReady) {
+    if (!isAuthReady || isLoading) {
         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
     }
     
@@ -267,7 +268,8 @@ const App = () => {
         return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
     }
     
-    if (isLoading || !userProfile) {
+    if (!userProfile) {
+        // This state should be brief, but we show a loader just in case.
         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
     }
 
