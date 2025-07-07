@@ -16,6 +16,25 @@ const firebaseConfig = {
     appId: process.env.REACT_APP_APP_ID
 };
 
+// --- Helper function for user-friendly error messages ---
+const getFriendlyAuthError = (errorCode) => {
+    switch (errorCode) {
+        case 'auth/email-already-in-use':
+            return 'This email address is already registered. Please try signing in instead.';
+        case 'auth/wrong-password':
+            return 'Incorrect password. Please try again.';
+        case 'auth/user-not-found':
+            return 'No account found with this email. Please check the email or register a new clinic.';
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.';
+        case 'auth/weak-password':
+            return 'The password is too weak. It must be at least 6 characters long.';
+        default:
+            return 'An unexpected error occurred. Please try again.';
+    }
+};
+
+
 // --- Main App Component ---
 const App = () => {
     // --- State Management ---
@@ -131,7 +150,7 @@ const App = () => {
             await batch.commit();
             // On success, onAuthStateChanged will handle the UI transition
         } catch (error) {
-            console.error("Sign up error:", error);
+            console.error("Sign up error:", error.code, error.message);
             throw error; // Re-throw the error to be caught by the AuthPage
         }
     };
@@ -141,7 +160,7 @@ const App = () => {
         try {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
-            console.error("Login error:", error);
+            console.error("Login error:", error.code, error.message);
             throw error; // Re-throw the error to be caught by the AuthPage
         }
     };
@@ -291,7 +310,7 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
     const handleCaptchaChange = (e) => {
         const userAnswer = e.target.value;
         setCaptcha(prev => ({ ...prev, answer: userAnswer }));
-        if (parseInt(userAnswer) === captcha.num1 + captcha.num2) {
+        if (parseInt(userAnswer, 10) === captcha.num1 + captcha.num2) {
             setIsCaptchaSolved(true);
         } else {
             setIsCaptchaSolved(false);
@@ -315,7 +334,7 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
                 await onSignUpSubmit(formData.email, formData.password, formData.clinicName);
             }
         } catch (error) {
-            setAuthError(error.message);
+            setAuthError(getFriendlyAuthError(error.code));
             setIsSubmitting(false);
             generateCaptcha(); // Generate a new question on error
         }
