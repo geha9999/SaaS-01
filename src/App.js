@@ -150,6 +150,7 @@ const MainApp = ({ user, auth, db }) => {
     const handleLogout = () => signOut(auth);
     const openModal = (type) => { setIsModalOpen(true); setModalContent(type); };
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
+    const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
 
     const handleInviteStaff = async ({ email, role }) => {
         if (!db || !userProfile || !clinic) return;
@@ -207,6 +208,7 @@ const MainApp = ({ user, auth, db }) => {
     const renderModal = () => {
         if (!isModalOpen) return null;
         switch (modalContent) {
+            case 'forgotPassword': return <ForgotPasswordModal onClose={closeModal} onSubmit={handleForgotPassword} />;
             case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
             case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
             case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
