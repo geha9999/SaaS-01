@@ -129,7 +129,12 @@ const App = () => {
                 return () => unsubscribers.forEach(unsub => unsub());
 
             } else {
-                signOut(auth);
+                // This is an inconsistent state. The user is authenticated, but we can't find their profile.
+                // This might happen with a brand new account if Firestore is slow.
+                // Instead of signing out immediately and causing a loop, we show an error.
+                console.error(`Inconsistent state: User ${user.uid} is authenticated but has no profile in Firestore.`);
+                setError("Your user profile could not be found after login. This can happen with new accounts if the database is slow. Please try refreshing the page or contact support if the problem persists.");
+                setAppState('error');
             }
         }, (err) => {
             console.error("Error fetching user profile:", err);
