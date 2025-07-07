@@ -117,7 +117,7 @@ const LoggedInView = ({ user, onLogout }) => (
 
 // --- Main App Component (Rebuilt for Stability) ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error'
+    const [isLoading, setIsLoading] = useState(true);
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
@@ -131,13 +131,13 @@ const App = () => {
             setDb(dbInstance);
 
             const unsubscribe = onAuthStateChanged(authInstance, (authUser) => {
-                setAppState(authUser ? 'authenticated' : 'unauthenticated');
                 setUser(authUser);
+                setIsLoading(false);
             });
             return () => unsubscribe();
         } catch (e) {
             console.error("CRITICAL: Firebase initialization failed.", e);
-            setAppState('error');
+            setIsLoading(false); 
         }
     }, []);
 
@@ -163,15 +163,11 @@ const App = () => {
         signOut(auth);
     };
 
-    if (appState === 'initializing') {
+    if (isLoading) {
         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
     }
     
-    if (appState === 'error') {
-        return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><p className="text-red-500">A critical error occurred. Could not load the application.</p></div>;
-    }
-
-    if (appState === 'authenticated') {
+    if (user) {
         return <LoggedInView user={user} onLogout={handleLogout} />;
     }
 
