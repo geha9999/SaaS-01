@@ -58,7 +58,7 @@ const App = () => {
         setAppState('Attempting test login...');
         try {
             // NOTE: Use the credentials for the account you already created
-            await signInWithEmailAndPassword(authService, 'your-test-email@example.com', 'your-test-password');
+            await signInWithEmailAndPassword(authService, 'geha9999@yahoo.com', 'Test123');
             // onAuthStateChanged will handle the state change if successful
         } catch (error) {
             setAppState('Test Login Failed.');
