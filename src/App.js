@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send, ShieldCheck } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send, ShieldCheck, Mail } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // These are provided by Vercel Environment Variables
@@ -130,7 +130,6 @@ const App = () => {
     const handleSignUp = async (email, password, clinicName) => {
         if (!auth || !db) throw new Error("Authentication service not ready.");
         try {
-            // This logic will be enhanced later to handle staff invitations
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
             const batch = writeBatch(db);
@@ -148,10 +147,9 @@ const App = () => {
                 role: 'owner'
             });
             await batch.commit();
-            // On success, onAuthStateChanged will handle the UI transition
         } catch (error) {
             console.error("Sign up error:", error.code, error.message);
-            throw error; // Re-throw the error to be caught by the AuthPage
+            throw error;
         }
     };
 
@@ -161,7 +159,19 @@ const App = () => {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
             console.error("Login error:", error.code, error.message);
-            throw error; // Re-throw the error to be caught by the AuthPage
+            throw error;
+        }
+    };
+    
+    const handleForgotPassword = async (email) => {
+        if (!auth) throw new Error("Authentication service not ready.");
+        try {
+            await sendPasswordResetEmail(auth, email);
+            alert(`If an account exists for ${email}, a password reset link has been sent.`);
+            closeModal();
+        } catch (error) {
+            console.error("Forgot password error:", error.code, error.message);
+            throw error;
         }
     };
     
@@ -235,7 +245,7 @@ const App = () => {
     }
 
     if (!user || !userProfile) {
-        return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} />;
+        return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
     }
     
     const renderPage = () => {
@@ -258,6 +268,7 @@ const App = () => {
     const renderModal = () => {
         if (!isModalOpen) return null;
         switch (modalContent) {
+            case 'forgotPassword': return <ForgotPasswordModal onClose={closeModal} onSubmit={handleForgotPassword} />;
             case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
             case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
             case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
@@ -284,13 +295,12 @@ const App = () => {
 };
 
 // --- Pages ---
-const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
+const AuthPage = ({ onLoginSubmit, onSignUpSubmit, onForgotPasswordClick }) => {
     const [isLoginView, setIsLoginView] = useState(true);
     const [formData, setFormData] = useState({ email: '', password: '', clinicName: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [authError, setAuthError] = useState('');
     
-    // Simple CAPTCHA state
     const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: '' });
     const [isCaptchaSolved, setIsCaptchaSolved] = useState(false);
 
@@ -299,11 +309,7 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
     }, []);
 
     const generateCaptcha = () => {
-        setCaptcha({
-            num1: Math.ceil(Math.random() * 10),
-            num2: Math.ceil(Math.random() * 10),
-            answer: ''
-        });
+        setCaptcha({ num1: Math.ceil(Math.random() * 10), num2: Math.ceil(Math.random() * 10), answer: '' });
         setIsCaptchaSolved(false);
     };
 
@@ -336,7 +342,7 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
         } catch (error) {
             setAuthError(getFriendlyAuthError(error.code));
             setIsSubmitting(false);
-            generateCaptcha(); // Generate a new question on error
+            generateCaptcha();
         }
     };
 
@@ -352,20 +358,12 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
                         <Input label="Your Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
                         <Input label="Password" name="password" type="password" value={formData.password} onChange={handleChange} required />
                         
-                        {/* CAPTCHA Section */}
                         <div className="flex items-center justify-between p-2 bg-gray-100 rounded-md">
                            <label htmlFor="captcha" className="text-gray-600 font-medium">
                                 <ShieldCheck className="inline-block mr-2 text-green-500" size={20}/>
                                 What is {captcha.num1} + {captcha.num2}?
                            </label>
-                           <input 
-                                id="captcha"
-                                type="number"
-                                value={captcha.answer}
-                                onChange={handleCaptchaChange}
-                                className="w-20 p-2 text-center border rounded-md focus:ring-2 focus:ring-blue-500"
-                                required
-                           />
+                           <input id="captcha" type="number" value={captcha.answer} onChange={handleCaptchaChange} className="w-20 p-2 text-center border rounded-md focus:ring-2 focus:ring-blue-500" required />
                         </div>
 
                         <Button type="submit" className="w-full !mt-6" disabled={isSubmitting || !isCaptchaSolved}>
@@ -373,7 +371,12 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
                         </Button>
                         {authError && <p className="text-red-500 text-sm mt-4 text-center">{authError}</p>}
                     </form>
-                    <div className="mt-6 text-center">
+                    <div className="mt-6 text-center text-sm">
+                        {isLoginView ? (
+                            <button onClick={onForgotPasswordClick} className="text-blue-600 hover:underline">Forgot Password?</button>
+                        ) : null}
+                    </div>
+                    <div className="mt-4 text-center">
                         <button onClick={() => { setIsLoginView(!isLoginView); setAuthError(''); generateCaptcha(); }} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
                     </div>
                 </div>
@@ -535,6 +538,36 @@ const BottomNav = ({ page, setPage, onLogout }) => {
 const Header = ({ page, onAddClick }) => { const title = page.charAt(0).toUpperCase() + page.slice(1); const canAdd = ['patients', 'appointments', 'payments'].includes(page); return ( <div className="flex justify-between items-center pb-4 mb-4 md:mb-0 border-b"> <h2 className="text-3xl font-bold">{title}</h2> {canAdd && ( <button onClick={onAddClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow"> <PlusCircle size={20} /> <span className="hidden sm:inline">Add New</span> </button> )} </div> ); };
 const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
+const ForgotPasswordModal = ({ onClose, onSubmit }) => {
+    const [email, setEmail] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        setError('');
+        try {
+            await onSubmit(email);
+        } catch (err) {
+            setError(getFriendlyAuthError(err.code));
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <Modal onClose={onClose} title="Reset Your Password">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-gray-600">Enter your email address and we will send you a link to reset your password.</p>
+                <Input label="Email Address" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? 'Sending...' : <><Mail className="mr-2" />Send Reset Link</>}
+                </Button>
+                {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+            </form>
+        </Modal>
+    );
+};
 const InviteStaffModal = ({ onClose, onSubmit }) => {
     const [formData, setFormData] = useState({ email: '', role: 'doctor' });
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
