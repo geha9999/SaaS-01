@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, UsersRound, Send, ShieldCheck } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // These are provided by Vercel Environment Variables
@@ -109,9 +109,9 @@ const App = () => {
 
     // --- User Actions ---
     const handleSignUp = async (email, password, clinicName) => {
-        // This function will be enhanced later to check for pending invitations
-        if (!auth || !db) return;
+        if (!auth || !db) throw new Error("Authentication service not ready.");
         try {
+            // This logic will be enhanced later to handle staff invitations
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
             const batch = writeBatch(db);
@@ -129,19 +129,20 @@ const App = () => {
                 role: 'owner'
             });
             await batch.commit();
+            // On success, onAuthStateChanged will handle the UI transition
         } catch (error) {
             console.error("Sign up error:", error);
-            alert(`Sign up failed: ${error.message}`);
+            throw error; // Re-throw the error to be caught by the AuthPage
         }
     };
 
     const handleLogin = async (email, password) => {
-        if (!auth) return;
+        if (!auth) throw new Error("Authentication service not ready.");
         try {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
             console.error("Login error:", error);
-            alert(`Login failed: ${error.message}`);
+            throw error; // Re-throw the error to be caught by the AuthPage
         }
     };
     
@@ -161,7 +162,7 @@ const App = () => {
                 clinicId: userProfile.clinicId,
                 clinicName: clinic.name,
                 invitedBy: user.uid,
-                email: email.toLowerCase(), // Store email in lowercase for case-insensitive lookup
+                email: email.toLowerCase(),
                 role: role,
                 status: "pending",
                 createdAt: serverTimestamp()
@@ -267,8 +268,59 @@ const App = () => {
 const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
     const [isLoginView, setIsLoginView] = useState(true);
     const [formData, setFormData] = useState({ email: '', password: '', clinicName: '' });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [authError, setAuthError] = useState('');
+    
+    // Simple CAPTCHA state
+    const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: '' });
+    const [isCaptchaSolved, setIsCaptchaSolved] = useState(false);
+
+    useEffect(() => {
+        generateCaptcha();
+    }, []);
+
+    const generateCaptcha = () => {
+        setCaptcha({
+            num1: Math.ceil(Math.random() * 10),
+            num2: Math.ceil(Math.random() * 10),
+            answer: ''
+        });
+        setIsCaptchaSolved(false);
+    };
+
+    const handleCaptchaChange = (e) => {
+        const userAnswer = e.target.value;
+        setCaptcha(prev => ({ ...prev, answer: userAnswer }));
+        if (parseInt(userAnswer) === captcha.num1 + captcha.num2) {
+            setIsCaptchaSolved(true);
+        } else {
+            setIsCaptchaSolved(false);
+        }
+    };
+
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-    const handleSubmit = (e) => { e.preventDefault(); isLoginView ? onLoginSubmit(formData.email, formData.password) : onSignUpSubmit(formData.email, formData.password, formData.clinicName); };
+    
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!isCaptchaSolved) {
+            setAuthError("Please solve the security question correctly.");
+            return;
+        }
+        setIsSubmitting(true);
+        setAuthError('');
+        try {
+            if (isLoginView) {
+                await onLoginSubmit(formData.email, formData.password);
+            } else {
+                await onSignUpSubmit(formData.email, formData.password, formData.clinicName);
+            }
+        } catch (error) {
+            setAuthError(error.message);
+            setIsSubmitting(false);
+            generateCaptcha(); // Generate a new question on error
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
             <div className="w-full max-w-sm mx-auto">
@@ -280,10 +332,30 @@ const AuthPage = ({ onLoginSubmit, onSignUpSubmit }) => {
                         {!isLoginView && (<Input label="Clinic Name" name="clinicName" type="text" value={formData.clinicName} onChange={handleChange} required />)}
                         <Input label="Your Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
                         <Input label="Password" name="password" type="password" value={formData.password} onChange={handleChange} required />
-                        <Button type="submit" className="w-full !mt-6">{isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>}</Button>
+                        
+                        {/* CAPTCHA Section */}
+                        <div className="flex items-center justify-between p-2 bg-gray-100 rounded-md">
+                           <label htmlFor="captcha" className="text-gray-600 font-medium">
+                                <ShieldCheck className="inline-block mr-2 text-green-500" size={20}/>
+                                What is {captcha.num1} + {captcha.num2}?
+                           </label>
+                           <input 
+                                id="captcha"
+                                type="number"
+                                value={captcha.answer}
+                                onChange={handleCaptchaChange}
+                                className="w-20 p-2 text-center border rounded-md focus:ring-2 focus:ring-blue-500"
+                                required
+                           />
+                        </div>
+
+                        <Button type="submit" className="w-full !mt-6" disabled={isSubmitting || !isCaptchaSolved}>
+                            {isSubmitting ? 'Processing...' : (isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>)}
+                        </Button>
+                        {authError && <p className="text-red-500 text-sm mt-4 text-center">{authError}</p>}
                     </form>
                     <div className="mt-6 text-center">
-                        <button onClick={() => setIsLoginView(!isLoginView)} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
+                        <button onClick={() => { setIsLoginView(!isLoginView); setAuthError(''); generateCaptcha(); }} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
                     </div>
                 </div>
             </div>
@@ -466,6 +538,6 @@ const AddAppointmentModal = ({ onClose, onSubmit, patients }) => { const [formDa
 const AddPaymentModal = ({ onClose, onSubmit, patients }) => { const [formData, setFormData] = useState({ patientId: '', amount: '', date: '', method: 'Card' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Record Payment"> <form onSubmit={handleSubmit} className="space-y-4"> <Select label="Patient" name="patientId" value={formData.patientId} onChange={handleChange} required> <option value="" disabled>Select a patient</option> {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)} </Select> <Input label="Amount (IDR)" name="amount" type="number" step="1000" value={formData.amount} onChange={handleChange} required /> <Input label="Payment Date" name="date" type="date" value={formData.date} onChange={handleChange} required /> <Select label="Payment Method" name="method" value={formData.method} onChange={handleChange} required> <option>Card</option> <option>Cash</option> <option>Bank Transfer</option> <option>GoPay</option> </Select> <Button type="submit" className="w-full">Record Payment</Button> </form> </Modal> ); };
 const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> );
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
-const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center ${className}`}> {children} </button> );
+const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 
 export default App;
