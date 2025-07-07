@@ -128,10 +128,14 @@ const App = () => {
                 
                 return () => unsubscribers.forEach(unsub => unsub());
 
+            } else {
+                // This is an inconsistent state. The user is authenticated, but we can't find their profile.
+                // This might happen with a brand new account if Firestore is slow.
+                // Instead of signing out immediately and causing a loop, we show an error.
+                console.error(`Inconsistent state: User ${user.uid} is authenticated but has no profile in Firestore.`);
+                // We don't sign out here, to prevent loops. The app will just stay in the loading state.
+                // The onSnapshot will fire again if the doc is created.
             }
-            // If docSnap doesn't exist, we do nothing. The app remains in the 'loading_profile' state.
-            // The onSnapshot listener will fire again when the document is created after sign-up.
-            // This fixes the race condition.
         }, (err) => {
             console.error("Error fetching user profile:", err);
             setError("Could not load user profile.");
