@@ -63,96 +63,117 @@ const App = () => {
 
     // --- Firebase Initialization ---
     useEffect(() => {
-        console.log("App initializing...");
         try {
-            if (!firebaseConfig.apiKey) {
-                console.error("Firebase config is missing. Check Vercel environment variables.");
-                setError("Application is not configured correctly. Please contact support.");
-                return;
-            }
-            const app = initializeApp(firebaseConfig);
-            const firestoreDb = getFirestore(app);
-            const firebaseAuth = getAuth(app);
-            setDb(firestoreDb);
-            setAuth(firebaseAuth);
-            console.log("Firebase services initialized.");
+            if (firebaseConfig.apiKey) {
+                const app = initializeApp(firebaseConfig);
+                const firestoreDb = getFirestore(app);
+                const firebaseAuth = getAuth(app);
+                setDb(firestoreDb);
+                setAuth(firebaseAuth);
 
-            const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-                console.log("Auth state changed. User:", user ? user.uid : 'none');
-                setUser(user);
-                setIsAuthReady(true);
-                if (!user) {
-                    setUserProfile(null); setClinic(null); setPatients([]); setAppointments([]); setPayments([]); setStaff([]);
-                    setIsLoading(false);
-                }
-            });
-            return () => unsubscribe();
+                const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+                    setUser(user);
+                    setIsAuthReady(true);
+                    if (!user) {
+                        setUserProfile(null);
+                        setClinic(null);
+                        setIsLoading(false);
+                    }
+                });
+                return () => unsubscribe();
+            } else {
+                 setError("Application is not configured correctly.");
+                 setIsAuthReady(true);
+                 setIsLoading(false);
+            }
         } catch (e) {
             console.error("Firebase Initialization Error:", e);
             setError("Could not connect to services.");
+            setIsAuthReady(true);
             setIsLoading(false);
         }
     }, []);
 
     // --- Profile, Clinic, and Data Fetching ---
     useEffect(() => {
-        let unsubscribers = [];
-        if (isAuthReady && user && db) {
-            console.log("User is authenticated, fetching profile...");
-            setIsLoading(true);
-            const userProfileRef = doc(db, "users", user.uid);
-            const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const profileData = { id: docSnap.id, ...docSnap.data() };
-                    console.log("User profile found:", profileData);
-                    setUserProfile(profileData);
-                    
-                    const clinicRef = doc(db, "clinics", profileData.clinicId);
-                    unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
-                        if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
-                    }));
+        if (!isAuthReady || !user || !db) {
+            if(isAuthReady && !user) setIsLoading(false);
+            return;
+        };
 
-                    const staffQuery = query(collection(db, "users"), where("clinicId", "==", profileData.clinicId));
-                    unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
-                         setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-                    }));
-
-                    const collections = ['patients', 'appointments', 'payments'];
-                    collections.forEach(colName => {
-                        const dataQuery = query(collection(db, `clinics/${profileData.clinicId}/${colName}`));
-                        unsubscribers.push(onSnapshot(dataQuery, (snapshot) => {
-                            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                            if (colName === 'patients') setPatients(data);
-                            if (colName === 'appointments') setAppointments(data.map(a => ({...a, dateTime: a.dateTime?.toDate() })));
-                            if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
-                        }));
-                    });
-                } else {
-                    console.log("User profile not found in database.");
-                    setUserProfile(null);
+        setIsLoading(true);
+        const userProfileRef = doc(db, "users", user.uid);
+        const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const profileData = { id: docSnap.id, ...docSnap.data() };
+                setUserProfile(profileData);
+            } else {
+                // This can happen if a user is authenticated but their DB entry was deleted.
+                // Log them out to fix the inconsistent state.
+                if (auth) {
+                    signOut(auth);
                 }
-                setIsLoading(false);
-            });
-            unsubscribers.push(unsubProfile);
-        }
+            }
+        }, (err) => {
+            console.error("Error fetching user profile:", err);
+            setError("Could not load user profile.");
+            setIsLoading(false);
+        });
+
+        return () => unsubProfile();
+    }, [isAuthReady, user, db, auth]);
+
+    // This effect runs when the user profile (and thus clinicId) is loaded
+    useEffect(() => {
+        if (!userProfile || !db) {
+            setPatients([]);
+            setAppointments([]);
+            setPayments([]);
+            setStaff([]);
+            return;
+        };
+        
+        const clinicId = userProfile.clinicId;
+        let unsubscribers = [];
+
+        const clinicRef = doc(db, "clinics", clinicId);
+        unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
+            if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
+        }));
+
+        const staffQuery = query(collection(db, "users"), where("clinicId", "==", clinicId));
+        unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
+             setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        }));
+
+        const collections = ['patients', 'appointments', 'payments'];
+        collections.forEach(colName => {
+            const dataQuery = query(collection(db, `clinics/${clinicId}/${colName}`));
+            unsubscribers.push(onSnapshot(dataQuery, (snapshot) => {
+                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (colName === 'patients') setPatients(data);
+                if (colName === 'appointments') setAppointments(data.map(a => ({...a, dateTime: a.dateTime?.toDate() })));
+                if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
+            }));
+        });
+
+        setIsLoading(false);
+        
         return () => unsubscribers.forEach(unsub => unsub());
-    }, [isAuthReady, user, db]);
+    }, [userProfile, db]);
 
     // --- User Actions ---
     const handleSignUp = async (email, password, clinicName) => {
         if (!auth || !db) throw new Error("Authentication service not ready.");
-        console.log("Attempting to sign up with email:", email);
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
-            console.log("Firebase user created:", newUser.uid);
             const batch = writeBatch(db);
             const clinicRef = doc(collection(db, "clinics"));
             batch.set(clinicRef, { name: clinicName, ownerId: newUser.uid, createdAt: serverTimestamp(), subscription: { plan: 'free', status: 'active' } });
             const userProfileRef = doc(db, "users", newUser.uid);
             batch.set(userProfileRef, { email: newUser.email, clinicId: clinicRef.id, role: 'owner' });
             await batch.commit();
-            console.log("Clinic and user profile created in database.");
         } catch (error) {
             console.error("Sign up error:", error.code, error.message);
             throw error;
@@ -161,10 +182,8 @@ const App = () => {
 
     const handleLogin = async (email, password) => {
         if (!auth) throw new Error("Authentication service not ready.");
-        console.log("Attempting to log in with email:", email);
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            console.log("Login successful for user:", userCredential.user.uid);
+            await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
             console.error("Login error:", error.code, error.message);
             throw error;
@@ -175,11 +194,9 @@ const App = () => {
         if (!auth) throw new Error("Authentication service not ready.");
         try {
             await sendPasswordResetEmail(auth, email);
-            alert(`If an account exists for ${email}, a password reset link has been sent.`);
-            closeModal();
         } catch (error) {
-            alert(`Could not send reset email. Please check the address and try again.`);
-            closeModal();
+            console.error("Forgot password error:", error.code, error.message);
+            throw error; // Re-throw to be handled by the modal
         }
     };
     
@@ -241,19 +258,20 @@ const App = () => {
     if (!isAuthReady) {
         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
     }
+    
+    if (error) {
+         return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{error}</div></div>;
+    }
 
-    if (!user || !userProfile) {
+    if (!user) {
         return <AuthPage onLoginSubmit={handleLogin} onSignUpSubmit={handleSignUp} onForgotPasswordClick={() => openModal('forgotPassword')} />;
     }
     
-    const renderPage = () => {
-        if (isLoading) {
-            return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
-        }
-        if (error) {
-            return <div className="text-center text-red-500 font-semibold">{error}</div>;
-        }
+    if (isLoading || !userProfile) {
+        return <div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div></div>;
+    }
 
+    const renderPage = () => {
         switch (page) {
             case 'settings': return <SettingsPage clinic={clinic} />;
             case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
@@ -623,4 +641,4 @@ const Input = ({ label, ...props }) => ( <div> <label className="block text-sm f
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
 const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 
-export default A
+export default App;
