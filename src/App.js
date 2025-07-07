@@ -57,8 +57,14 @@ const App = () => {
         setErrorMessage('');
         setAppState('Attempting test login...');
         try {
-            // NOTE: Use the credentials for the account you already created
-            await signInWithEmailAndPassword(authService, 'geha9999@yahoo.com', 'Test123');
+            // ===================================================================
+            //  IMPORTANT: EDIT THE TWO LINES BELOW WITH YOUR TEST CREDENTIALS
+            // ===================================================================
+            const testEmail = 'geha9999@yahoo.com';
+            const testPassword = 'Test123';
+            // ===================================================================
+            
+            await signInWithEmailAndPassword(authService, testEmail, testPassword);
             // onAuthStateChanged will handle the state change if successful
         } catch (error) {
             setAppState('Test Login Failed.');
@@ -79,14 +85,13 @@ const App = () => {
                 )}
             </div>
             <div style={{marginTop: '20px'}}>
-                <p>This is a temporary page to diagnose the problem. Please copy all the text you see here and send it back to me.</p>
+                <p>This is a temporary page to diagnose the problem. Please follow the next steps carefully.</p>
                 <button 
                     onClick={handleTestLogin} 
                     style={{ marginTop: '10px', padding: '10px 15px', fontSize: '16px', cursor: 'pointer' }}
                 >
-                    Run Test Login (Optional)
+                    Run Test Login
                 </button>
-                <p style={{fontSize: '12px', marginTop: '5px'}}>Note: You must edit the email/password in the code to use the test button.</p>
             </div>
         </div>
     );
