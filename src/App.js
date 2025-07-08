@@ -99,6 +99,7 @@ const MainApp = ({ user, auth, db }) => {
     const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [payments, setPayments] = useState([]);
+    const [pendingInvitations, setPendingInvitations] = useState([]);
     
     // --- Data Fetching Logic ---
     useEffect(() => {
@@ -122,26 +123,12 @@ const MainApp = ({ user, auth, db }) => {
         const clinicId = userProfile.clinicId;
         const unsubscribers = [];
 
-        const clinicRef = doc(db, "clinics", clinicId);
-        unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
-            if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
-        }));
-
-        const staffQuery = query(collection(db, "users"), where("clinicId", "==", clinicId));
-        unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
-             setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-        }));
-
-        const collections = ['patients', 'appointments', 'payments'];
-        collections.forEach(colName => {
-            const dataQuery = query(collection(db, `clinics/${clinicId}/${colName}`));
-            unsubscribers.push(onSnapshot(dataQuery, (snapshot) => {
-                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                if (colName === 'patients') setPatients(data);
-                if (colName === 'appointments') setAppointments(data.map(a => ({...a, dateTime: a.dateTime?.toDate() })));
-                if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
-            }));
-        });
+        unsubscribers.push(onSnapshot(doc(db, "clinics", clinicId), (snap) => setClinic(snap.exists() ? {id: snap.id, ...snap.data()} : null) ));
+        unsubscribers.push(onSnapshot(query(collection(db, "users"), where("clinicId", "==", clinicId)), (snap) => setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
+        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/patients`)), (snap) => setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
+        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/appointments`)), (snap) => setAppointments(snap.docs.map(a => ({...a.data(), id: a.id, dateTime: a.data().dateTime?.toDate() }))) ));
+        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/payments`)), (snap) => setPayments(snap.docs.map(p => ({...p.data(), id: p.id, date: p.data().date?.toDate() }))) ));
+        unsubscribers.push(onSnapshot(query(collection(db, "invitations"), where("clinicId", "==", clinicId), where("status", "==", "pending")), (snap) => setPendingInvitations(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         
         return () => unsubscribers.forEach(unsub => unsub());
     }, [userProfile, db]);
@@ -156,7 +143,7 @@ const MainApp = ({ user, auth, db }) => {
         await addDoc(collection(db, "invitations"), {
             clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
         });
-        alert(`Invitation sent to ${email}!`);
+        alert(`Invitation sent to ${email}! Note: In a real app, this would trigger an email.`);
         closeModal();
     };
     const handleAddPatient = async (patientData) => {
@@ -196,7 +183,7 @@ const MainApp = ({ user, auth, db }) => {
     const renderPage = () => {
         switch (page) {
             case 'settings': return <SettingsPage clinic={clinic} />;
-            case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
+            case 'staff': return <StaffPage staff={staff} pendingInvitations={pendingInvitations} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
             case 'patients': return <PatientsPage patients={patients} onAddClick={() => openModal('addPatient')}/>;
             case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} onAddClick={() => openModal('addAppointment')} patients={patients} />;
             case 'payments': return <PaymentsPage payments={payments} onAddClick={() => openModal('addPayment')} patients={patients}/>;
@@ -314,7 +301,53 @@ const App = () => {
 
 // --- All other components remain below, unchanged ---
 const SettingsPage = ({ clinic }) => ( <Card> <h3 className="text-xl font-bold mb-4">Clinic Settings</h3> <p>Details for {clinic.name}</p> </Card> );
-const StaffPage = ({ staff, onInviteClick, userRole }) => ( <div> <div className="flex justify-end mb-4"> {userRole === 'owner' && ( <button onClick={onInviteClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow"> <UserPlus size={20} /> <span>Invite New Member</span> </button> )} </div> <Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Email</th> <th className="p-4">Role</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {staff.length > 0 ? staff.map(s => ( <tr key={s.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{s.email}</td> <td className="p-4 text-gray-500 capitalize">{s.role}</td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="3" className="text-center p-8 text-gray-500">No staff members found.</td></tr>} </tbody> </table> </div> </Card> </div> );
+const StaffPage = ({ staff, pendingInvitations, onInviteClick, userRole }) => (
+    <div>
+        <div className="flex justify-end mb-4">
+            {userRole === 'owner' && (
+                <button onClick={onInviteClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow">
+                    <UserPlus size={20} /> <span>Invite New Member</span>
+                </button>
+            )}
+        </div>
+        <Card>
+            <h3 className="text-lg font-semibold mb-4">Current Staff</h3>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead> <tr className="border-b"> <th className="p-4">Email</th> <th className="p-4">Role</th> <th className="p-4">Actions</th> </tr> </thead>
+                    <tbody>
+                        {staff.length > 0 ? staff.map(s => (
+                            <tr key={s.id} className="border-b hover:bg-gray-50">
+                                <td className="p-4 font-medium">{s.email}</td>
+                                <td className="p-4 text-gray-500 capitalize">{s.role}</td>
+                                <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td>
+                            </tr>
+                        )) : <tr><td colSpan="3" className="text-center p-8 text-gray-500">No staff members found.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        </Card>
+        <div className="mt-8">
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Pending Invitations</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead> <tr className="border-b"> <th className="p-4">Email</th> <th className="p-4">Role</th> <th className="p-4">Status</th> </tr> </thead>
+                        <tbody>
+                            {pendingInvitations.length > 0 ? pendingInvitations.map(i => (
+                                <tr key={i.id} className="border-b hover:bg-gray-50">
+                                    <td className="p-4 font-medium">{i.email}</td>
+                                    <td className="p-4 text-gray-500 capitalize">{i.role}</td>
+                                    <td className="p-4 text-yellow-500 capitalize">{i.status}</td>
+                                </tr>
+                            )) : <tr><td colSpan="3" className="text-center p-8 text-gray-500">No pending invitations.</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+        </div>
+    </div>
+);
 const DashboardPage = ({ patients, appointments, payments }) => { const upcomingAppointments = useMemo(() => appointments.filter(a => a.dateTime && a.dateTime > new Date()).sort((a, b) => a.dateTime - b.dateTime).slice(0, 5), [appointments]); const monthlyRevenue = useMemo(() => { const data = {}; payments.forEach(p => { if (p.date) { const month = p.date.toLocaleString('default', { month: 'short', year: '2-digit' }); if (!data[month]) data[month] = 0; data[month] += p.amount; } }); const sortedMonths = Object.keys(data).sort((a, b) => new Date(`1 ${a.replace(' ',' 20')}`) - new Date(`1 ${b.replace(' ',' 20')}`)); return sortedMonths.map(month => ({ name: month, revenue: data[month] })); }, [payments]); const stats = [ { title: "Total Patients", value: patients.length, icon: Users }, { title: "Upcoming Appointments", value: upcomingAppointments.length, icon: Calendar }, { title: "Revenue This Month", value: `Rp${payments.filter(p => p.date && p.date.getMonth() === new Date().getMonth()).reduce((acc, p) => acc + p.amount, 0).toLocaleString('id-ID')}`, icon: DollarSign }, ]; return ( <div className="grid grid-cols-1 gap-6 lg:grid-cols-3"> {stats.map(stat => ( <div key={stat.title} className="bg-white p-6 rounded-xl shadow-md flex items-center justify-between"> <div><p className="text-sm text-gray-500">{stat.title}</p><p className="text-2xl font-bold">{stat.value}</p></div> {React.createElement(stat.icon, { className: "w-8 h-8 text-blue-500" })} </div> ))} </div> ); };
 const PatientsPage = ({ patients, onAddClick }) => ( <div><div className="flex justify-end mb-4"><Button onClick={onAddClick}><PlusCircle size={20} className="mr-2"/>Add Patient</Button></div><Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Name</th> <th className="p-4 hidden md:table-cell">Email</th> <th className="p-4 hidden sm:table-cell">Phone</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {patients.length > 0 ? patients.map(p => ( <tr key={p.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{p.name}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{p.email}</td> <td className="p-4 text-gray-500 hidden sm:table-cell">{p.phone}</td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="4" className="text-center p-8 text-gray-500">No patients found. Add one to get started.</td></tr>} </tbody> </table> </div> </Card></div> );
 const AppointmentsPage = ({ appointments, updateStatus, onAddClick, patients }) => { const sortedAppointments = useMemo(() => [...appointments].sort((a,b) => (b.dateTime || 0) - (a.dateTime || 0)), [appointments]); return ( <div><div className="flex justify-end mb-4"><Button onClick={onAddClick}><PlusCircle size={20} className="mr-2"/>Add Appointment</Button></div><Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Patient</th> <th className="p-4 hidden md:table-cell">Date & Time</th> <th className="p-4">Status</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {sortedAppointments.length > 0 ? sortedAppointments.map(a => ( <tr key={a.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{a.patientName}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{a.dateTime ? a.dateTime.toLocaleString('id-ID') : 'No Date'}</td> <td className="p-4"> <select value={a.status} onChange={(e) => updateStatus(a.id, e.target.value)} className={`rounded-md px-2 py-1 text-sm font-semibold bg-transparent border ${ a.status === 'Completed' ? 'text-green-600 border-green-600' : a.status === 'Cancelled' ? 'text-red-600 border-red-600' : 'text-blue-600 border-blue-600' }`}> <option value="Scheduled">Scheduled</option> <option value="Completed">Completed</option> <option value="Cancelled">Cancelled</option> </select> </td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="4" className="text-center p-8 text-gray-500">No appointments found.</td></tr>} </tbody> </table> </div> </Card></div> ); };
