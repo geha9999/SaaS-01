@@ -21,15 +21,15 @@ export default async function handler(req, res) {
       to: [to],
       subject: `You're invited to join ${clinicName} on TherapySaaS`,
       html: `
-        <div style="font-family: sans-serif; padding: 20px; color: #333;">
+        <div style="font-family: sans-serif; padding: 20px; color: #333; line-height: 1.6;">
           <h2>You've Been Invited!</h2>
           <p>You have been invited to join <strong>${clinicName}</strong> on the TherapySaaS platform as a <strong>${role}</strong>.</p>
           <p>To accept your invitation, please sign up with this email address at the following link:</p>
           <a 
             href="https://therapysaas01.vercel.app" 
-            style="display: inline-block; padding: 12px 20px; background-color: #2563eb; color: #fff; text-decoration: none; border-radius: 8px;"
+            style="display: inline-block; margin: 10px 0; padding: 12px 20px; background-color: #2563eb; color: #fff; text-decoration: none; border-radius: 8px;"
           >
-            Accept Invitation
+            Accept Invitation & Create Account
           </a>
           <p style="margin-top: 20px; font-size: 12px; color: #777;">If you were not expecting this invitation, you can safely ignore this email.</p>
         </div>
@@ -41,8 +41,8 @@ export default async function handler(req, res) {
     }
 
     // 5. Send a success response back to the main app
-    res.status(200).json(data);
+    res.status(200).json({ message: 'Email sent successfully' });
   } catch (error) {
-    res.status(500).json(error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
