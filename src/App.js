@@ -47,7 +47,7 @@ const getFriendlyAuthError = (error) => {
 };
 
 // --- Define the SaaS owner email ---
-const SAAS_OWNER_EMAIL = 'admin@alteaworld.io'; // Replace with your actual admin email
+const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
 
 // --- UI Components ---
 const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> );
