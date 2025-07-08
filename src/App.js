@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -31,7 +31,7 @@ const getFriendlyAuthError = (error) => {
 // --- UI Components ---
 const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> );
 const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
-const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
+const Card = ({ children }) => ( <div className="bg-white p-4 sm:p-6 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
 const LoadingSpinner = ({ message = "Loading..." }) => (<div className="h-screen w-screen flex flex-col justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div><p className="mt-4 text-gray-600">{message}</p></div>);
@@ -104,32 +104,24 @@ const MainApp = ({ user, auth, db }) => {
     // --- Data Fetching Logic ---
     useEffect(() => {
         if (!user || !db) return;
-
         const userProfileRef = doc(db, "users", user.uid);
         const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setUserProfile({ id: docSnap.id, ...docSnap.data() });
-            } else {
-                signOut(auth);
-            }
+            if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
+            else signOut(auth);
         });
-
         return () => unsubProfile();
     }, [user, db, auth]);
 
     useEffect(() => {
         if (!userProfile) return;
-
         const clinicId = userProfile.clinicId;
         const unsubscribers = [];
-
         unsubscribers.push(onSnapshot(doc(db, "clinics", clinicId), (snap) => setClinic(snap.exists() ? {id: snap.id, ...snap.data()} : null) ));
         unsubscribers.push(onSnapshot(query(collection(db, "users"), where("clinicId", "==", clinicId)), (snap) => setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/patients`)), (snap) => setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/appointments`)), (snap) => setAppointments(snap.docs.map(a => ({...a.data(), id: a.id, dateTime: a.data().dateTime?.toDate() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/payments`)), (snap) => setPayments(snap.docs.map(p => ({...p.data(), id: p.id, date: p.data().date?.toDate() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, "invitations"), where("clinicId", "==", clinicId), where("status", "==", "pending")), (snap) => setPendingInvitations(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
-        
         return () => unsubscribers.forEach(unsub => unsub());
     }, [userProfile, db]);
 
@@ -140,54 +132,25 @@ const MainApp = ({ user, auth, db }) => {
 
     const handleInviteStaff = async ({ email, role }) => {
         if (!db || !userProfile || !clinic) return;
-        await addDoc(collection(db, "invitations"), {
-            clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
-        });
-        alert(`Invitation sent to ${email}! Note: In a real app, this would trigger an email.`);
+        await addDoc(collection(db, "invitations"), { clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp() });
+        alert(`Invitation for ${email} has been created. They can now sign up with this email to join your clinic.`);
         closeModal();
     };
-    const handleAddPatient = async (patientData) => {
-        const clinicId = userProfile?.clinicId;
-        if (!db || !clinicId) return;
-        await addDoc(collection(db, `clinics/${clinicId}/patients`), { ...patientData, createdAt: serverTimestamp() });
-        closeModal();
+    const handleDeleteInvitation = async (invitationId) => {
+        if (!db) return;
+        await deleteDoc(doc(db, "invitations", invitationId));
     };
-    const handleAddAppointment = async (appointmentData) => {
-        const clinicId = userProfile?.clinicId;
-        if (!db || !clinicId) return;
-        const selectedPatient = patients.find(p => p.id === appointmentData.patientId);
-        await addDoc(collection(db, `clinics/${clinicId}/appointments`), {
-            ...appointmentData, patientName: selectedPatient?.name || 'Unknown', dateTime: new Date(appointmentData.dateTime), status: 'Scheduled', createdAt: serverTimestamp()
-        });
-        closeModal();
-    };
-    const handleAddPayment = async (paymentData) => {
-        const clinicId = userProfile?.clinicId;
-        if (!db || !clinicId) return;
-        const selectedPatient = patients.find(p => p.id === paymentData.patientId);
-        await addDoc(collection(db, `clinics/${clinicId}/payments`), {
-            ...paymentData, patientName: selectedPatient?.name || 'Unknown', amount: parseFloat(paymentData.amount), date: new Date(paymentData.date), status: 'Paid', createdAt: serverTimestamp()
-        });
-        closeModal();
-    };
-    const updateAppointmentStatus = async (id, status) => {
-        const clinicId = userProfile?.clinicId;
-        if (!db || !clinicId) return;
-        await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
-    };
-
-    if (!userProfile || !clinic) {
-        return <LoadingSpinner message="Loading Clinic Data..." />;
-    }
+    
+    if (!userProfile || !clinic) return <LoadingSpinner message="Loading Clinic Data..." />;
 
     const renderPage = () => {
         switch (page) {
-            case 'settings': return <SettingsPage clinic={clinic} />;
-            case 'staff': return <StaffPage staff={staff} pendingInvitations={pendingInvitations} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
-            case 'patients': return <PatientsPage patients={patients} onAddClick={() => openModal('addPatient')}/>;
-            case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} onAddClick={() => openModal('addAppointment')} patients={patients} />;
-            case 'payments': return <PaymentsPage payments={payments} onAddClick={() => openModal('addPayment')} patients={patients}/>;
-            case 'dashboard': default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
+            case 'settings': return <SettingsPage onManageStaffClick={() => setPage('staff')} />;
+            case 'staff': return <StaffPage staff={staff} pendingInvitations={pendingInvitations} onInviteClick={() => openModal('inviteStaff')} onDeleteInvitation={handleDeleteInvitation} userRole={userProfile.role}/>;
+            case 'patients': return <PatientsPage patients={patients} />;
+            case 'appointments': return <AppointmentsPage appointments={appointments} />;
+            case 'payments': return <PaymentsPage payments={payments} />;
+            default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
         }
     };
 
@@ -195,9 +158,6 @@ const MainApp = ({ user, auth, db }) => {
         if (!isModalOpen) return null;
         switch (modalContent) {
             case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
-            case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
-            case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
-            case 'addPayment': return <AddPaymentModal onClose={closeModal} onSubmit={handleAddPayment} patients={patients} />;
             default: return null;
         }
     };
@@ -220,7 +180,7 @@ const MainApp = ({ user, auth, db }) => {
 
 // --- Top-Level App Component (Rebuilt for Stability) ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error'
+    const [appState, setAppState] = useState('initializing');
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
@@ -240,13 +200,8 @@ const App = () => {
                     setUser(authUser);
                 });
                 return () => unsubscribe();
-            } else {
-                setAppState('error');
-            }
-        } catch (e) {
-            console.error("CRITICAL: Firebase initialization failed.", e);
-            setAppState('error');
-        }
+            } else { setAppState('error'); }
+        } catch (e) { setAppState('error'); }
     }, []);
 
     const handleLogin = (email, password) => signInWithEmailAndPassword(auth, email, password);
@@ -279,18 +234,10 @@ const App = () => {
     const openForgotPasswordModal = () => setIsModalOpen(true);
     const closeForgotPasswordModal = () => setIsModalOpen(false);
 
-    if (appState === 'initializing') {
-        return <LoadingSpinner message="Connecting to services..." />;
-    }
+    if (appState === 'initializing') return <LoadingSpinner />;
+    if (appState === 'error') return <ErrorDisplay message="A critical error occurred." />;
+    if (user) return <MainApp user={user} auth={auth} db={db} />;
     
-    if (appState === 'error') {
-        return <ErrorDisplay message="A critical error occurred. Could not load the application." />;
-    }
-
-    if (appState === 'authenticated') {
-        return <MainApp user={user} auth={auth} db={db} />;
-    }
-
     return (
         <>
             <AuthPage onLogin={handleLogin} onSignUp={handleSignUp} onForgotPasswordClick={openForgotPasswordModal} />
@@ -299,17 +246,17 @@ const App = () => {
     );
 };
 
-// --- All other components remain below, unchanged ---
-const SettingsPage = ({ clinic }) => ( <Card> <h3 className="text-xl font-bold mb-4">Clinic Settings</h3> <p>Details for {clinic.name}</p> </Card> );
-const StaffPage = ({ staff, pendingInvitations, onInviteClick, userRole }) => (
+// --- Pages & Components ---
+const SettingsPage = ({ onManageStaffClick }) => ( <Card> <h3 className="text-xl font-bold mb-4">Clinic Settings</h3> <p className="text-gray-600 mb-6">Manage your clinic profile, staff, and subscription here.</p> <Button onClick={onManageStaffClick}><Briefcase className="mr-2"/> Manage Staff</Button> </Card> );
+const StaffPage = ({ staff, pendingInvitations, onInviteClick, onDeleteInvitation, userRole }) => (
     <div>
-        <div className="flex justify-end mb-4">
-            {userRole === 'owner' && (
+        {userRole === 'owner' && (
+            <div className="flex justify-end mb-4">
                 <button onClick={onInviteClick} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow">
                     <UserPlus size={20} /> <span>Invite New Member</span>
                 </button>
-            )}
-        </div>
+            </div>
+        )}
         <Card>
             <h3 className="text-lg font-semibold mb-4">Current Staff</h3>
             <div className="overflow-x-auto">
@@ -332,13 +279,15 @@ const StaffPage = ({ staff, pendingInvitations, onInviteClick, userRole }) => (
                 <h3 className="text-lg font-semibold mb-4">Pending Invitations</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead> <tr className="border-b"> <th className="p-4">Email</th> <th className="p-4">Role</th> <th className="p-4">Status</th> </tr> </thead>
+                        <thead> <tr className="border-b"> <th className="p-4">Email</th> <th className="p-4">Role</th> <th className="p-4">Actions</th> </tr> </thead>
                         <tbody>
                             {pendingInvitations.length > 0 ? pendingInvitations.map(i => (
                                 <tr key={i.id} className="border-b hover:bg-gray-50">
                                     <td className="p-4 font-medium">{i.email}</td>
                                     <td className="p-4 text-gray-500 capitalize">{i.role}</td>
-                                    <td className="p-4 text-yellow-500 capitalize">{i.status}</td>
+                                    <td className="p-4">
+                                        <button onClick={() => onDeleteInvitation(i.id)} className="p-2 text-red-500 rounded-full hover:bg-red-100"><Trash2 size={18} /></button>
+                                    </td>
                                 </tr>
                             )) : <tr><td colSpan="3" className="text-center p-8 text-gray-500">No pending invitations.</td></tr>}
                         </tbody>
@@ -349,11 +298,11 @@ const StaffPage = ({ staff, pendingInvitations, onInviteClick, userRole }) => (
     </div>
 );
 const DashboardPage = ({ patients, appointments, payments }) => { const upcomingAppointments = useMemo(() => appointments.filter(a => a.dateTime && a.dateTime > new Date()).sort((a, b) => a.dateTime - b.dateTime).slice(0, 5), [appointments]); const monthlyRevenue = useMemo(() => { const data = {}; payments.forEach(p => { if (p.date) { const month = p.date.toLocaleString('default', { month: 'short', year: '2-digit' }); if (!data[month]) data[month] = 0; data[month] += p.amount; } }); const sortedMonths = Object.keys(data).sort((a, b) => new Date(`1 ${a.replace(' ',' 20')}`) - new Date(`1 ${b.replace(' ',' 20')}`)); return sortedMonths.map(month => ({ name: month, revenue: data[month] })); }, [payments]); const stats = [ { title: "Total Patients", value: patients.length, icon: Users }, { title: "Upcoming Appointments", value: upcomingAppointments.length, icon: Calendar }, { title: "Revenue This Month", value: `Rp${payments.filter(p => p.date && p.date.getMonth() === new Date().getMonth()).reduce((acc, p) => acc + p.amount, 0).toLocaleString('id-ID')}`, icon: DollarSign }, ]; return ( <div className="grid grid-cols-1 gap-6 lg:grid-cols-3"> {stats.map(stat => ( <div key={stat.title} className="bg-white p-6 rounded-xl shadow-md flex items-center justify-between"> <div><p className="text-sm text-gray-500">{stat.title}</p><p className="text-2xl font-bold">{stat.value}</p></div> {React.createElement(stat.icon, { className: "w-8 h-8 text-blue-500" })} </div> ))} </div> ); };
-const PatientsPage = ({ patients, onAddClick }) => ( <div><div className="flex justify-end mb-4"><Button onClick={onAddClick}><PlusCircle size={20} className="mr-2"/>Add Patient</Button></div><Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Name</th> <th className="p-4 hidden md:table-cell">Email</th> <th className="p-4 hidden sm:table-cell">Phone</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {patients.length > 0 ? patients.map(p => ( <tr key={p.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{p.name}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{p.email}</td> <td className="p-4 text-gray-500 hidden sm:table-cell">{p.phone}</td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="4" className="text-center p-8 text-gray-500">No patients found. Add one to get started.</td></tr>} </tbody> </table> </div> </Card></div> );
-const AppointmentsPage = ({ appointments, updateStatus, onAddClick, patients }) => { const sortedAppointments = useMemo(() => [...appointments].sort((a,b) => (b.dateTime || 0) - (a.dateTime || 0)), [appointments]); return ( <div><div className="flex justify-end mb-4"><Button onClick={onAddClick}><PlusCircle size={20} className="mr-2"/>Add Appointment</Button></div><Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Patient</th> <th className="p-4 hidden md:table-cell">Date & Time</th> <th className="p-4">Status</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {sortedAppointments.length > 0 ? sortedAppointments.map(a => ( <tr key={a.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{a.patientName}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{a.dateTime ? a.dateTime.toLocaleString('id-ID') : 'No Date'}</td> <td className="p-4"> <select value={a.status} onChange={(e) => updateStatus(a.id, e.target.value)} className={`rounded-md px-2 py-1 text-sm font-semibold bg-transparent border ${ a.status === 'Completed' ? 'text-green-600 border-green-600' : a.status === 'Cancelled' ? 'text-red-600 border-red-600' : 'text-blue-600 border-blue-600' }`}> <option value="Scheduled">Scheduled</option> <option value="Completed">Completed</option> <option value="Cancelled">Cancelled</option> </select> </td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="4" className="text-center p-8 text-gray-500">No appointments found.</td></tr>} </tbody> </table> </div> </Card></div> ); };
-const PaymentsPage = ({ payments, onAddClick, patients }) => { const sortedPayments = useMemo(() => [...payments].sort((a,b) => (b.date || 0) - (a.date || 0)), [payments]); return ( <div><div className="flex justify-end mb-4"><Button onClick={onAddClick}><PlusCircle size={20} className="mr-2"/>Add Payment</Button></div><Card> <div className="overflow-x-auto"> <table className="w-full text-left"> <thead> <tr className="border-b"> <th className="p-4">Patient</th> <th className="p-4 hidden md:table-cell">Date</th> <th className="p-4 hidden sm:table-cell">Method</th> <th className="p-4">Amount</th> <th className="p-4">Actions</th> </tr> </thead> <tbody> {sortedPayments.length > 0 ? sortedPayments.map(p => ( <tr key={p.id} className="border-b hover:bg-gray-50"> <td className="p-4 font-medium">{p.patientName}</td> <td className="p-4 text-gray-500 hidden md:table-cell">{p.date ? p.date.toLocaleDateString('id-ID') : 'No Date'}</td> <td className="p-4 text-gray-500 hidden sm:table-cell">{p.method}</td> <td className="p-4 font-semibold text-green-600">Rp{p.amount.toLocaleString('id-ID')}</td> <td className="p-4"><button className="p-2 rounded-full hover:bg-gray-200"><MoreVertical size={18} /></button></td> </tr> )) : <tr><td colSpan="5" className="text-center p-8 text-gray-500">No payments found.</td></tr>} </tbody> </table> </div> </Card></div> ); };
-const Sidebar = ({ page, setPage, clinicName, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'staff', label: 'Staff', icon: Briefcase }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'payments', label: 'Payments', icon: DollarSign }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full"> <div className="px-8 py-6"><h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1></div> <nav className="flex-1 px-4"> <div className="px-4 py-2 mb-2"> <p className="text-sm text-gray-500">CLINIC</p> <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p> </div> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}> {React.createElement(item.icon, { className: "w-5 h-5 mr-3" })} <span className="font-medium">{item.label}</span> </button> ))} </nav> <div className="p-4 border-t"><button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700"><LogOut className="w-4 h-4 mr-2" />Logout</button></div> </aside> ); };
-const BottomNav = ({ page, setPage, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'staff', label: 'Staff', icon: Briefcase }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50"> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/5 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}> {React.createElement(item.icon, { className: "w-6 h-6" })} <span className="text-xs mt-1">{item.label}</span> </button>))} <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/5"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button> </nav> ); };
+const PatientsPage = ({ patients }) => ( <Card> <h3 className="text-xl font-bold mb-4">Patients</h3> <p>{patients.length} patients.</p> </Card> );
+const AppointmentsPage = ({ appointments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Appointments</h3> <p>{appointments.length} appointments.</p> </Card> );
+const PaymentsPage = ({ payments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Payments</h3> <p>{payments.length} payments.</p> </Card> );
+const Sidebar = ({ page, setPage, clinicName, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'payments', label: 'Payments', icon: DollarSign }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full"> <div className="px-8 py-6"><h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1></div> <nav className="flex-1 px-4"> <div className="px-4 py-2 mb-2"> <p className="text-sm text-gray-500">CLINIC</p> <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p> </div> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}> {React.createElement(item.icon, { className: "w-5 h-5 mr-3" })} <span className="font-medium">{item.label}</span> </button> ))} </nav> <div className="p-4 border-t"><button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700"><LogOut className="w-4 h-4 mr-2" />Logout</button></div> </aside> ); };
+const BottomNav = ({ page, setPage, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50"> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/4 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}> {React.createElement(item.icon, { className: "w-6 h-6" })} <span className="text-xs mt-1">{item.label}</span> </button>))} <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/4"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button> </nav> ); };
 const Header = ({ page }) => { const title = page.charAt(0).toUpperCase() + page.slice(1); return ( <div className="flex justify-between items-center pb-4 mb-4 md:mb-0 border-b"> <h2 className="text-3xl font-bold">{title}</h2> </div> ); };
 const ForgotPasswordModal = ({ onClose, onSubmit }) => { const [email, setEmail] = useState(''); const [isSubmitting, setIsSubmitting] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(false); const handleSubmit = async (e) => { e.preventDefault(); setIsSubmitting(true); setError(''); setSuccess(false); try { await onSubmit(email); setSuccess(true); } catch (err) { setError(getFriendlyAuthError(err)); } finally { setIsSubmitting(false); } }; return ( <Modal onClose={onClose} title="Reset Your Password"> {success ? ( <div className="text-center"> <Mail className="mx-auto h-12 w-12 text-green-500" /> <h3 className="mt-2 text-lg font-medium text-gray-900">Check your email</h3> <p className="mt-2 text-sm text-gray-500">If an account exists for that email, we have sent instructions to reset your password.</p> <div className="mt-4"> <Button onClick={onClose} className="w-full">Close</Button> </div> </div> ) : ( <form onSubmit={handleSubmit} className="space-y-4"> <p className="text-sm text-gray-600">Enter your email address and we will send you a link to reset your password.</p> <Input label="Email Address" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /> <Button type="submit" className="w-full" disabled={isSubmitting}> {isSubmitting ? 'Sending...' : <><Send className="mr-2" />Send Reset Link</>} </Button> {error && <p className="text-red-500 text-sm text-center">{error}</p>} </form> )} </Modal> ); };
 const InviteStaffModal = ({ onClose, onSubmit }) => { const [formData, setFormData] = useState({ email: '', role: 'doctor' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Invite New Staff Member"> <form onSubmit={handleSubmit} className="space-y-4"> <Input label="Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required /> <Select label="Role" name="role" value={formData.role} onChange={handleChange}> <option value="doctor">Doctor</option> <option value="admin">Admin</option> </Select> <Button type="submit" className="w-full"><Send className="mr-2" />Send Invitation</Button> </form> </Modal> ); };
