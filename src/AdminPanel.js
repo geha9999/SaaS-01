@@ -3,37 +3,96 @@ import {
   Users, Settings, Globe, DollarSign, Database, FileText, Mail, 
   BarChart3, TrendingUp, Shield, Edit3, Save, X, Plus, Trash2,
   Building, Calendar, CreditCard, Eye, Search, Filter, Download,
-  AlertTriangle, CheckCircle, Clock, Ban, Activity
+  AlertTriangle, CheckCircle, Clock, Ban, Activity, LogOut
 } from 'lucide-react';
-
-// Mock data - in real app, this would come from Firebase
-const MOCK_ADMIN_DATA = {
-  systemStats: {
-    totalTenants: 1247,
-    activeTenants: 1156,
-    pendingPayments: 91,
-    monthlyRevenue: 18705, // USD
-    totalRevenue: 234560,
-    transactionFees: 2847,
-    storageUsed: "2.3TB",
-    storageLimit: "10TB"
-  },
-  recentTenants: [
-    { id: 1, clinicName: "Jakarta Medical Center", email: "admin@jmc.com", status: "active", plan: "annual", joined: "2025-01-08", lastActive: "2025-01-08" },
-    { id: 2, clinicName: "Bali Health Clinic", email: "dr.smith@bali.com", status: "trial", plan: "monthly", joined: "2025-01-07", lastActive: "2025-01-07" },
-    { id: 3, clinicName: "Surabaya Dental", email: "info@surbaya-dental.com", status: "pending_payment", plan: "monthly", joined: "2025-01-06", lastActive: "2025-01-06" },
-    { id: 4, clinicName: "Clinic Sehat", email: "contact@sehat.co.id", status: "active", plan: "annual", joined: "2025-01-05", lastActive: "2025-01-08" },
-    { id: 5, clinicName: "Wellness Center Bandung", email: "admin@wellness-bdg.com", status: "suspended", plan: "monthly", joined: "2025-01-04", lastActive: "2025-01-03" }
-  ]
-};
+import { 
+  collection, 
+  doc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  limit, 
+  where,
+  setDoc,
+  addDoc,
+  serverTimestamp,
+  getDoc
+} from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 
 // Admin Panel Main Component
-const AdminPanel = () => {
+const AdminPanel = ({ user, auth, db }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [adminData, setAdminData] = useState(MOCK_ADMIN_DATA);
   const [isEditing, setIsEditing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  
+  // Real data states
+  const [systemStats, setSystemStats] = useState({
+    totalTenants: 0,
+    activeTenants: 0,
+    pendingPayments: 0,
+    monthlyRevenue: 0,
+    totalRevenue: 0,
+    transactionFees: 0,
+    storageUsed: "0GB",
+    storageLimit: "10TB"
+  });
+  const [tenants, setTenants] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [allPayments, setAllPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch real data from Firebase
+  useEffect(() => {
+    if (!db) return;
+
+    const unsubscribers = [];
+
+    // Listen to all clinics
+    const clinicsQuery = query(collection(db, "clinics"), orderBy("createdAt", "desc"));
+    unsubscribers.push(onSnapshot(clinicsQuery, (snapshot) => {
+      const clinicsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        lastActive: doc.data().lastActive?.toDate()
+      }));
+      setTenants(clinicsData);
+    }));
+
+    // Listen to all users
+    const usersQuery = query(collection(db, "users"));
+    unsubscribers.push(onSnapshot(usersQuery, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate()
+      }));
+      setAllUsers(usersData);
+    }));
+
+    // Calculate system stats
+    const updateStats = () => {
+      const activeTenants = tenants.filter(t => t.status === 'active' || t.status === 'onboarding_completed').length;
+      const pendingPayments = tenants.filter(t => t.status === 'pending_payment').length;
+      
+      setSystemStats(prev => ({
+        ...prev,
+        totalTenants: tenants.length,
+        activeTenants: activeTenants,
+        pendingPayments: pendingPayments,
+        monthlyRevenue: Math.floor(activeTenants * 15), // $15 per active tenant
+        totalRevenue: Math.floor(tenants.length * 15 * 6), // Estimated
+        transactionFees: Math.floor(activeTenants * 2.5) // Estimated
+      }));
+    };
+
+    updateStats();
+    setLoading(false);
+
+    return () => unsubscribers.forEach(unsub => unsub());
+  }, [db, tenants.length]);
 
   // Navigation items
   const navItems = [
@@ -46,10 +105,10 @@ const AdminPanel = () => {
     { id: 'analytics', label: 'Analytics', icon: TrendingUp }
   ];
 
+  const handleLogout = () => signOut(auth);
+
   // Dashboard Component
   const Dashboard = () => {
-    const { systemStats } = adminData;
-    
     const statCards = [
       { 
         title: 'Total Tenants', 
@@ -123,15 +182,21 @@ const AdminPanel = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
               <Users className="w-6 h-6 text-blue-600 mb-2" />
-              <p className="font-medium">Add New Tenant</p>
-              <p className="text-sm text-gray-500">Manually create clinic account</p>
+              <p className="font-medium">Manage Tenants</p>
+              <p className="text-sm text-gray-500">View and manage clinic accounts</p>
             </button>
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+            <button 
+              onClick={() => setActiveTab('content')}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+            >
               <FileText className="w-6 h-6 text-green-600 mb-2" />
               <p className="font-medium">Update Terms</p>
               <p className="text-sm text-gray-500">Modify legal documents</p>
             </button>
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+            <button 
+              onClick={() => setActiveTab('pricing')}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+            >
               <DollarSign className="w-6 h-6 text-purple-600 mb-2" />
               <p className="font-medium">Adjust Pricing</p>
               <p className="text-sm text-gray-500">Update subscription plans</p>
@@ -143,22 +208,24 @@ const AdminPanel = () => {
         <div className="bg-white p-6 rounded-xl shadow-md">
           <h3 className="text-lg font-semibold mb-4">Recent Tenant Activity</h3>
           <div className="space-y-3">
-            {adminData.recentTenants.slice(0, 5).map(tenant => (
+            {tenants.slice(0, 5).map(tenant => (
               <div key={tenant.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${
-                    tenant.status === 'active' ? 'bg-green-500' : 
-                    tenant.status === 'trial' ? 'bg-yellow-500' : 
+                    tenant.status === 'active' || tenant.status === 'onboarding_completed' ? 'bg-green-500' : 
+                    tenant.status === 'pending_verification' ? 'bg-yellow-500' : 
                     tenant.status === 'pending_payment' ? 'bg-orange-500' : 'bg-red-500'
                   }`}></div>
                   <div>
-                    <p className="font-medium">{tenant.clinicName}</p>
-                    <p className="text-sm text-gray-500">{tenant.email}</p>
+                    <p className="font-medium">{tenant.name}</p>
+                    <p className="text-sm text-gray-500">{tenant.ownerId}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm capitalize font-medium">{tenant.status.replace('_', ' ')}</p>
-                  <p className="text-xs text-gray-500">Last active: {tenant.lastActive}</p>
+                  <p className="text-sm capitalize font-medium">{tenant.status?.replace('_', ' ')}</p>
+                  <p className="text-xs text-gray-500">
+                    Created: {tenant.createdAt?.toLocaleDateString() || 'N/A'}
+                  </p>
                 </div>
               </div>
             ))}
@@ -170,9 +237,9 @@ const AdminPanel = () => {
 
   // Tenant Management Component
   const TenantManagement = () => {
-    const filteredTenants = adminData.recentTenants.filter(tenant => {
-      const matchesSearch = tenant.clinicName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           tenant.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredTenants = tenants.filter(tenant => {
+      const matchesSearch = tenant.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           tenant.ownerId?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -180,7 +247,8 @@ const AdminPanel = () => {
     const getStatusBadge = (status) => {
       const statusConfig = {
         active: { bg: 'bg-green-100', text: 'text-green-800', label: 'Active' },
-        trial: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Trial' },
+        onboarding_completed: { bg: 'bg-green-100', text: 'text-green-800', label: 'Active' },
+        pending_verification: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending Verification' },
         pending_payment: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Pending Payment' },
         suspended: { bg: 'bg-red-100', text: 'text-red-800', label: 'Suspended' }
       };
@@ -192,13 +260,41 @@ const AdminPanel = () => {
       );
     };
 
+    const suspendTenant = async (tenantId) => {
+      if (window.confirm('Are you sure you want to suspend this tenant?')) {
+        try {
+          await setDoc(doc(db, "clinics", tenantId), { 
+            status: 'suspended',
+            suspendedAt: serverTimestamp()
+          }, { merge: true });
+          alert('Tenant suspended successfully');
+        } catch (error) {
+          console.error('Error suspending tenant:', error);
+          alert('Error suspending tenant');
+        }
+      }
+    };
+
+    const activateTenant = async (tenantId) => {
+      try {
+        await setDoc(doc(db, "clinics", tenantId), { 
+          status: 'active',
+          activatedAt: serverTimestamp()
+        }, { merge: true });
+        alert('Tenant activated successfully');
+      } catch (error) {
+        console.error('Error activating tenant:', error);
+        alert('Error activating tenant');
+      }
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-800">Tenant Management</h2>
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
             <Plus size={16} />
-            Add Tenant
+            Manual Add Tenant
           </button>
         </div>
 
@@ -222,7 +318,8 @@ const AdminPanel = () => {
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
-              <option value="trial">Trial</option>
+              <option value="onboarding_completed">Onboarding Completed</option>
+              <option value="pending_verification">Pending Verification</option>
               <option value="pending_payment">Pending Payment</option>
               <option value="suspended">Suspended</option>
             </select>
@@ -237,9 +334,8 @@ const AdminPanel = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Clinic</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -248,21 +344,18 @@ const AdminPanel = () => {
                   <tr key={tenant.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{tenant.clinicName}</div>
-                        <div className="text-sm text-gray-500">{tenant.email}</div>
+                        <div className="text-sm font-medium text-gray-900">{tenant.name}</div>
+                        <div className="text-sm text-gray-500">{tenant.id}</div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(tenant.status)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
-                      {tenant.plan}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {tenant.createdAt?.toLocaleDateString() || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {tenant.joined}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {tenant.lastActive}
+                      {tenant.ownerId}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       <button className="text-blue-600 hover:text-blue-900">
@@ -271,9 +364,21 @@ const AdminPanel = () => {
                       <button className="text-green-600 hover:text-green-900">
                         <Edit3 size={16} />
                       </button>
-                      <button className="text-red-600 hover:text-red-900">
-                        <Ban size={16} />
-                      </button>
+                      {tenant.status === 'suspended' ? (
+                        <button 
+                          onClick={() => activateTenant(tenant.id)}
+                          className="text-green-600 hover:text-green-900"
+                        >
+                          <CheckCircle size={16} />
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => suspendTenant(tenant.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Ban size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -289,12 +394,12 @@ const AdminPanel = () => {
   const ContentManagement = () => {
     const [editingContent, setEditingContent] = useState(null);
     const [contentData, setContentData] = useState({
-      terms_en: "Terms and Conditions in English...",
-      terms_id: "Syarat dan Ketentuan dalam Bahasa Indonesia...",
-      privacy_en: "Privacy Policy in English...",
-      privacy_id: "Kebijakan Privasi dalam Bahasa Indonesia...",
-      email_verification_en: "Email verification template in English...",
-      email_verification_id: "Template verifikasi email dalam Bahasa Indonesia..."
+      terms_en: "# Terms and Conditions\n\nBy using CLINICQ, you agree to these terms...",
+      terms_id: "# Syarat dan Ketentuan\n\nDengan menggunakan CLINICQ, Anda menyetujui syarat-syarat berikut...",
+      privacy_en: "# Privacy Policy\n\nWe respect your privacy and are committed to protecting your personal data...",
+      privacy_id: "# Kebijakan Privasi\n\nKami menghormati privasi Anda dan berkomitmen untuk melindungi data pribadi Anda...",
+      email_verification_en: "Welcome to CLINICQ! Please verify your email address...",
+      email_verification_id: "Selamat datang di CLINICQ! Silakan verifikasi alamat email Anda..."
     });
 
     const contentItems = [
@@ -306,14 +411,24 @@ const AdminPanel = () => {
       { id: 'email_verification_id', title: 'Template Email (Bahasa)', icon: Mail }
     ];
 
-    const handleSaveContent = (contentId, newContent) => {
-      setContentData(prev => ({
-        ...prev,
-        [contentId]: newContent
-      }));
-      setEditingContent(null);
-      // Here you would save to Firebase
-      console.log('Saving content:', contentId, newContent);
+    const handleSaveContent = async (contentId, newContent) => {
+      try {
+        await setDoc(doc(db, "system_content", contentId), {
+          content: newContent,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid
+        });
+        
+        setContentData(prev => ({
+          ...prev,
+          [contentId]: newContent
+        }));
+        setEditingContent(null);
+        alert('Content updated successfully!');
+      } catch (error) {
+        console.error('Error saving content:', error);
+        alert('Error saving content');
+      }
     };
 
     return (
@@ -321,7 +436,7 @@ const AdminPanel = () => {
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-800">Content Management</h2>
           <div className="text-sm text-gray-500">
-            Last updated: January 8, 2025
+            Last updated: {new Date().toLocaleDateString()}
           </div>
         </div>
 
@@ -379,25 +494,6 @@ const AdminPanel = () => {
             </div>
           ))}
         </div>
-
-        {/* Content Preview */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-semibold mb-4">Live Preview</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 mb-2">English Version</h4>
-              <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                How users see the content in English...
-              </div>
-            </div>
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 mb-2">Bahasa Indonesia</h4>
-              <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                Bagaimana pengguna melihat konten dalam Bahasa Indonesia...
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   };
@@ -414,12 +510,19 @@ const AdminPanel = () => {
       storage_enterprise_gb: 200
     });
 
-    const [isEditing, setIsEditing] = useState(false);
-
-    const handleSavePricing = () => {
-      // Save to Firebase
-      console.log('Saving pricing config:', pricingConfig);
-      setIsEditing(false);
+    const handleSavePricing = async () => {
+      try {
+        await setDoc(doc(db, "system_config", "pricing"), {
+          ...pricingConfig,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid
+        });
+        setIsEditing(false);
+        alert('Pricing updated successfully!');
+      } catch (error) {
+        console.error('Error saving pricing:', error);
+        alert('Error saving pricing configuration');
+      }
     };
 
     return (
@@ -456,135 +559,20 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        {/* Pricing Configuration */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-semibold mb-4">Pricing Configuration</h3>
-          
-          {isEditing ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Monthly Plan (USD)
-                  </label>
-                  <input
-                    type="number"
-                    value={pricingConfig.monthly_usd}
-                    onChange={(e) => setPricingConfig(prev => ({
-                      ...prev,
-                      monthly_usd: parseFloat(e.target.value)
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Annual Plan (USD)
-                  </label>
-                  <input
-                    type="number"
-                    value={pricingConfig.annual_usd}
-                    onChange={(e) => setPricingConfig(prev => ({
-                      ...prev,
-                      annual_usd: parseFloat(e.target.value)
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Transaction Fee (USD)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={pricingConfig.transaction_fee_usd}
-                    onChange={(e) => setPricingConfig(prev => ({
-                      ...prev,
-                      transaction_fee_usd: parseFloat(e.target.value)
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Transaction Fee (IDR)
-                  </label>
-                  <input
-                    type="number"
-                    value={pricingConfig.transaction_fee_idr}
-                    onChange={(e) => setPricingConfig(prev => ({
-                      ...prev,
-                      transaction_fee_idr: parseInt(e.target.value)
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex gap-4">
-                <button
-                  onClick={handleSavePricing}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                >
-                  <Save size={16} />
-                  Save Changes
-                </button>
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
-                >
-                  <X size={16} />
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Monthly Plan:</span>
-                  <span className="font-semibold">${pricingConfig.monthly_usd} USD</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Annual Plan:</span>
-                  <span className="font-semibold">${pricingConfig.annual_usd} USD</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Annual Discount:</span>
-                  <span className="font-semibold text-green-600">
-                    {Math.round((1 - pricingConfig.annual_usd / (pricingConfig.monthly_usd * 12)) * 100)}%
-                  </span>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Transaction Fee USD:</span>
-                  <span className="font-semibold">${pricingConfig.transaction_fee_usd}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Transaction Fee IDR:</span>
-                  <span className="font-semibold">Rp{pricingConfig.transaction_fee_idr}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Revenue Analytics */}
         <div className="bg-white p-6 rounded-xl shadow-md">
           <h3 className="text-lg font-semibold mb-4">Revenue Analytics</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">$18,705</p>
+              <p className="text-2xl font-bold text-blue-600">${systemStats.monthlyRevenue}</p>
               <p className="text-sm text-gray-500">This Month</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">$234,560</p>
+              <p className="text-2xl font-bold text-green-600">${systemStats.totalRevenue}</p>
               <p className="text-sm text-gray-500">Total Revenue</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-orange-600">$2,847</p>
+              <p className="text-2xl font-bold text-orange-600">${systemStats.transactionFees}</p>
               <p className="text-sm text-gray-500">Transaction Fees</p>
             </div>
           </div>
@@ -599,10 +587,24 @@ const AdminPanel = () => {
       maintenance_mode: false,
       new_registrations: true,
       email_notifications: true,
-      max_storage_per_tenant: 10, // GB
+      max_storage_per_tenant: 10,
       backup_frequency: 'daily',
-      session_timeout: 24 // hours
+      session_timeout: 24
     });
+
+    const handleSaveSystemSettings = async () => {
+      try {
+        await setDoc(doc(db, "system_config", "general"), {
+          ...systemConfig,
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid
+        });
+        alert('System settings updated successfully!');
+      } catch (error) {
+        console.error('Error saving system settings:', error);
+        alert('Error saving system settings');
+      }
+    };
 
     return (
       <div className="space-y-6">
@@ -650,113 +652,33 @@ const AdminPanel = () => {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Email Notifications</p>
-                  <p className="text-sm text-gray-500">System-wide email notifications</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={systemConfig.email_notifications}
-                    onChange={(e) => setSystemConfig(prev => ({
-                      ...prev,
-                      email_notifications: e.target.checked
-                    }))}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-              </div>
             </div>
           </div>
 
-          {/* Storage & Performance */}
+          {/* System Status */}
           <div className="bg-white p-6 rounded-xl shadow-md">
-            <h3 className="text-lg font-semibold mb-4">Storage & Performance</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Max Storage per Tenant (GB)
-                </label>
-                <input
-                  type="number"
-                  value={systemConfig.max_storage_per_tenant}
-                  onChange={(e) => setSystemConfig(prev => ({
-                    ...prev,
-                    max_storage_per_tenant: parseInt(e.target.value)
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+            <h3 className="text-lg font-semibold mb-4">System Status</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <Activity className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-sm font-medium">Database</p>
+                <p className="text-xs text-green-600">Online</p>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Backup Frequency
-                </label>
-                <select
-                  value={systemConfig.backup_frequency}
-                  onChange={(e) => setSystemConfig(prev => ({
-                    ...prev,
-                    backup_frequency: e.target.value
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="hourly">Hourly</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                </select>
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <Database className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-sm font-medium">Storage</p>
+                <p className="text-xs text-green-600">Healthy</p>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Session Timeout (hours)
-                </label>
-                <input
-                  type="number"
-                  value={systemConfig.session_timeout}
-                  onChange={(e) => setSystemConfig(prev => ({
-                    ...prev,
-                    session_timeout: parseInt(e.target.value)
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* System Status */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-semibold mb-4">System Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <Activity className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">Database</p>
-              <p className="text-xs text-green-600">Online</p>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <Database className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">Storage</p>
-              <p className="text-xs text-green-600">Healthy</p>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <Mail className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">Email Service</p>
-              <p className="text-xs text-green-600">Active</p>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <CreditCard className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">Payment Gateway</p>
-              <p className="text-xs text-green-600">Connected</p>
             </div>
           </div>
         </div>
 
         {/* Save Button */}
         <div className="flex justify-end">
-          <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+          <button 
+            onClick={handleSaveSystemSettings}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
             <Save size={16} />
             Save System Settings
           </button>
@@ -764,6 +686,18 @@ const AdminPanel = () => {
       </div>
     );
   };
+
+  // Loading screen
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading Admin Panel...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Main Render
   const renderContent = () => {
@@ -773,6 +707,8 @@ const AdminPanel = () => {
       case 'content': return <ContentManagement />;
       case 'pricing': return <PricingManagement />;
       case 'system': return <SystemSettings />;
+      case 'analytics': return <Dashboard />; // For now, same as dashboard
+      case 'languages': return <ContentManagement />; // For now, same as content
       default: return <Dashboard />;
     }
   };
@@ -810,17 +746,27 @@ const AdminPanel = () => {
           </div>
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t bg-white">
-          <div className="text-xs text-gray-500">
-            <p>ALTEAWORLD.IO</p>
-            <p>System Administrator</p>
+        <div className="absolute bottom-0 left-0 w-64 p-4 border-t bg-white">
+          <div className="space-y-2">
+            <div className="text-xs text-gray-500">
+              <p>ALTEAWORLD.IO</p>
+              <p>System Administrator</p>
+              <p className="truncate">{user?.email}</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              <LogOut size={16} />
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto p-6">
+        <div className="h-full overflow-y-auto p-6 pb-20">
           {renderContent()}
         </div>
       </div>
