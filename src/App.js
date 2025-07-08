@@ -220,7 +220,7 @@ const MainApp = ({ user, auth, db }) => {
             <div className="flex flex-col md:flex-row">
                 <Sidebar page={page} setPage={setPage} clinicName={clinic?.name} onLogout={handleLogout} />
                 <main className="flex-1 p-4 md:p-8 md:ml-64">
-                    <Header page={page} onAddClick={() => openModal(`add${page.slice(0, -1)}`)} />
+                    <Header page={page} />
                     <div className="mt-8">{renderPage()}</div>
                 </main>
             </div>
