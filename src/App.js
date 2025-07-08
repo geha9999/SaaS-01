@@ -133,42 +133,13 @@ const MainApp = ({ user, auth, db }) => {
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
 
     const handleInviteStaff = async ({ email, role }) => {
-        if (!db || !userProfile || !clinic) {
-            alert("Error: Not logged in or clinic data missing.");
-            return;
-        }
-        
-        // Call the backend helper to send the email
-        try {
-            const response = await fetch('/api/send-invitation', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: email, clinicName: clinic.name, role }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to send email.');
-            }
-
-            // If email sends successfully, create the invitation in the database
-            await addDoc(collection(db, "invitations"), {
-                clinicId: userProfile.clinicId,
-                clinicName: clinic.name,
-                invitedBy: user.uid,
-                email: email.toLowerCase(),
-                role: role,
-                status: "pending",
-                createdAt: serverTimestamp()
-            });
-            
-            alert(`Invitation sent to ${email}!`);
-            closeModal();
-        } catch (e) {
-            console.error("Error in invitation process: ", e);
-            alert("Failed to send invitation. Please check the email address and try again.");
-        }
+        if (!db || !userProfile || !clinic) return;
+        await addDoc(collection(db, "invitations"), {
+            clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
+        });
+        alert(`Invitation for ${email} has been created. They can now sign up with this email to join your clinic.`);
+        closeModal();
     };
-
     const handleDeleteInvitation = async (invitationId) => {
         if (!db) return;
         if(window.confirm("Are you sure you want to delete this invitation?")) {
@@ -344,10 +315,10 @@ const StaffPage = ({ staff, pendingInvitations, onInviteClick, onDeleteInvitatio
         </div>
     </div>
 );
-const DashboardPage = ({ patients, appointments, payments }) => { const upcomingAppointments = useMemo(() => appointments.filter(a => a.dateTime && a.dateTime > new Date()).sort((a, b) => a.dateTime - b.dateTime).slice(0, 5), [appointments]); const monthlyRevenue = useMemo(() => { const data = {}; payments.forEach(p => { if (p.date) { const month = p.date.toLocaleString('default', { month: 'short', year: '2-digit' }); if (!data[month]) data[month] = 0; data[month] += p.amount; } }); const sortedMonths = Object.keys(data).sort((a, b) => new Date(`1 ${a.replace(' ',' 20')}`) - new Date(`1 ${b.replace(' ',' 20')}`)); return sortedMonths.map(month => ({ name: month, revenue: data[month] })); }, [payments]); const stats = [ { title: "Total Patients", value: patients.length, icon: Users }, { title: "Upcoming Appointments", value: upcomingAppointments.length, icon: Calendar }, { title: "Revenue This Month", value: `Rp${payments.filter(p => p.date && p.date.getMonth() === new Date().getMonth()).reduce((acc, p) => acc + p.amount, 0).toLocaleString('id-ID')}`, icon: DollarSign }, ]; return ( <div className="grid grid-cols-1 gap-6 lg:grid-cols-3"> {stats.map(stat => ( <div key={stat.title} className="bg-white p-6 rounded-xl shadow-md flex items-center justify-between"> <div><p className="text-sm text-gray-500">{stat.title}</p><p className="text-2xl font-bold">{stat.value}</p></div> {React.createElement(stat.icon, { className: "w-8 h-8 text-blue-500" })} </div> ))} </div> ); };
-const PatientsPage = ({ patients }) => ( <Card> <h3 className="text-xl font-bold mb-4">Patients</h3> <p>{patients.length} patients.</p> </Card> );
-const AppointmentsPage = ({ appointments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Appointments</h3> <p>{appointments.length} appointments.</p> </Card> );
-const PaymentsPage = ({ payments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Payments</h3> <p>{payments.length} payments.</p> </Card> );
+const DashboardPage = () => ( <Card> <h3 className="text-xl font-bold mb-4">Dashboard</h3> <p>Dashboard content will be restored here.</p> </Card> );
+const PatientsPage = () => ( <Card> <h3 className="text-xl font-bold mb-4">Patients</h3> <p>Patient management will be restored here.</p> </Card> );
+const AppointmentsPage = () => ( <Card> <h3 className="text-xl font-bold mb-4">Appointments</h3> <p>Appointment management will be restored here.</p> </Card> );
+const PaymentsPage = () => ( <Card> <h3 className="text-xl font-bold mb-4">Payments</h3> <p>Payment management will be restored here.</p> </Card> );
 const Sidebar = ({ page, setPage, clinicName, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'payments', label: 'Payments', icon: DollarSign }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full"> <div className="px-8 py-6"><h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1></div> <nav className="flex-1 px-4"> <div className="px-4 py-2 mb-2"> <p className="text-sm text-gray-500">CLINIC</p> <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p> </div> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}> {React.createElement(item.icon, { className: "w-5 h-5 mr-3" })} <span className="font-medium">{item.label}</span> </button> ))} </nav> <div className="p-4 border-t"><button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700"><LogOut className="w-4 h-4 mr-2" />Logout</button></div> </aside> ); };
 const BottomNav = ({ page, setPage, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50"> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/3 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}> {React.createElement(item.icon, { className: "w-6 h-6" })} <span className="text-xs mt-1">{item.label}</span> </button>))} <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/3"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button> </nav> ); };
 const Header = ({ page }) => { const title = page.charAt(0).toUpperCase() + page.slice(1); return ( <div className="flex justify-between items-center pb-4 mb-4 md:mb-0 border-b"> <h2 className="text-3xl font-bold">{title}</h2> </div> ); };
