@@ -21,7 +21,9 @@ const getFriendlyAuthError = (error) => {
     switch (error.code) {
         case 'auth/email-already-in-use': return 'This email address is already registered. Please try signing in instead.';
         case 'auth/wrong-password': return 'Incorrect password. Please try again.';
-        case 'auth/user-not-found': return 'No account found with this email.';
+        case 'auth/user-not-found': return 'No account found with this email. Please check the email or register a new clinic.';
+        case 'auth/invalid-email': return 'Please enter a valid email address.';
+        case 'auth/weak-password': return 'The password is too weak. It must be at least 6 characters long.';
         default: return 'An unexpected error occurred. Please try again.';
     }
 };
@@ -89,6 +91,8 @@ const MainApp = ({ user, auth, db }) => {
     const [page, setPage] = useState('dashboard');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalContent, setModalContent] = useState(null);
+
+    // Data states
     const [userProfile, setUserProfile] = useState(null);
     const [clinic, setClinic] = useState(null);
     const [staff, setStaff] = useState([]);
@@ -96,50 +100,142 @@ const MainApp = ({ user, auth, db }) => {
     const [appointments, setAppointments] = useState([]);
     const [payments, setPayments] = useState([]);
     
+    // --- Data Fetching Logic ---
     useEffect(() => {
         if (!user || !db) return;
+
         const userProfileRef = doc(db, "users", user.uid);
         const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
-            if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
-            else signOut(auth);
+            if (docSnap.exists()) {
+                setUserProfile({ id: docSnap.id, ...docSnap.data() });
+            } else {
+                signOut(auth);
+            }
         });
+
         return () => unsubProfile();
     }, [user, db, auth]);
 
     useEffect(() => {
         if (!userProfile) return;
+
         const clinicId = userProfile.clinicId;
         const unsubscribers = [];
-        unsubscribers.push(onSnapshot(doc(db, "clinics", clinicId), (snap) => setClinic(snap.exists() ? {id: snap.id, ...snap.data()} : null) ));
-        unsubscribers.push(onSnapshot(query(collection(db, "users"), where("clinicId", "==", clinicId)), (snap) => setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/patients`)), (snap) => setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/appointments`)), (snap) => setAppointments(snap.docs.map(a => ({...a.data(), id: a.id, dateTime: a.data().dateTime?.toDate() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/payments`)), (snap) => setPayments(snap.docs.map(p => ({...p.data(), id: p.id, date: p.data().date?.toDate() }))) ));
+
+        const clinicRef = doc(db, "clinics", clinicId);
+        unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
+            if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
+        }));
+
+        const staffQuery = query(collection(db, "users"), where("clinicId", "==", clinicId));
+        unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
+             setStaff(staffSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        }));
+
+        const collections = ['patients', 'appointments', 'payments'];
+        collections.forEach(colName => {
+            const dataQuery = query(collection(db, `clinics/${clinicId}/${colName}`));
+            unsubscribers.push(onSnapshot(dataQuery, (snapshot) => {
+                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (colName === 'patients') setPatients(data);
+                if (colName === 'appointments') setAppointments(data.map(a => ({...a, dateTime: a.dateTime?.toDate() })));
+                if (colName === 'payments') setPayments(data.map(p => ({...p, date: p.date?.toDate() })));
+            }));
+        });
+        
         return () => unsubscribers.forEach(unsub => unsub());
     }, [userProfile, db]);
-    
+
+    // --- Actions ---
     const handleLogout = () => signOut(auth);
     const openModal = (type) => { setIsModalOpen(true); setModalContent(type); };
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
+    const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
 
-    if (!userProfile || !clinic) return <LoadingSpinner message="Loading Clinic Data..." />;
+    const handleInviteStaff = async ({ email, role }) => {
+        if (!db || !userProfile || !clinic) return;
+        await addDoc(collection(db, "invitations"), {
+            clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
+        });
+        alert(`Invitation sent to ${email}!`);
+        closeModal();
+    };
+    const handleAddPatient = async (patientData) => {
+        const clinicId = userProfile?.clinicId;
+        if (!db || !clinicId) return;
+        await addDoc(collection(db, `clinics/${clinicId}/patients`), { ...patientData, createdAt: serverTimestamp() });
+        closeModal();
+    };
+    const handleAddAppointment = async (appointmentData) => {
+        const clinicId = userProfile?.clinicId;
+        if (!db || !clinicId) return;
+        const selectedPatient = patients.find(p => p.id === appointmentData.patientId);
+        await addDoc(collection(db, `clinics/${clinicId}/appointments`), {
+            ...appointmentData, patientName: selectedPatient?.name || 'Unknown', dateTime: new Date(appointmentData.dateTime), status: 'Scheduled', createdAt: serverTimestamp()
+        });
+        closeModal();
+    };
+    const handleAddPayment = async (paymentData) => {
+        const clinicId = userProfile?.clinicId;
+        if (!db || !clinicId) return;
+        const selectedPatient = patients.find(p => p.id === paymentData.patientId);
+        await addDoc(collection(db, `clinics/${clinicId}/payments`), {
+            ...paymentData, patientName: selectedPatient?.name || 'Unknown', amount: parseFloat(paymentData.amount), date: new Date(paymentData.date), status: 'Paid', createdAt: serverTimestamp()
+        });
+        closeModal();
+    };
+    const updateAppointmentStatus = async (id, status) => {
+        const clinicId = userProfile?.clinicId;
+        if (!db || !clinicId) return;
+        await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
+    };
+
+    if (!userProfile || !clinic) {
+        return <LoadingSpinner message="Loading Clinic Data..." />;
+    }
 
     const renderPage = () => {
         switch (page) {
             case 'settings': return <SettingsPage clinic={clinic} />;
-            case 'staff': return <StaffPage staff={staff} userRole={userProfile.role} />;
+            case 'staff': return <StaffPage staff={staff} onInviteClick={() => openModal('inviteStaff')} userRole={userProfile.role}/>;
             case 'patients': return <PatientsPage patients={patients} />;
-            case 'appointments': return <AppointmentsPage appointments={appointments} />;
+            case 'appointments': return <AppointmentsPage appointments={appointments} updateStatus={updateAppointmentStatus} />;
             case 'payments': return <PaymentsPage payments={payments} />;
-            default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
+            case 'dashboard': default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
         }
     };
-    
-    return ( <div className="bg-gray-100 text-gray-900 min-h-screen font-sans"> <div className="flex flex-col md:flex-row"> <Sidebar page={page} setPage={setPage} clinicName={clinic?.name} onLogout={handleLogout} /> <main className="flex-1 p-4 md:p-8 md:ml-64"> <Header page={page} /> <div className="mt-8">{renderPage()}</div> </main> </div> </div> );
+
+    const renderModal = () => {
+        if (!isModalOpen) return null;
+        switch (modalContent) {
+            case 'forgotPassword': return <ForgotPasswordModal onClose={closeModal} onSubmit={handleForgotPassword} />;
+            case 'inviteStaff': return <InviteStaffModal onClose={closeModal} onSubmit={handleInviteStaff} />;
+            case 'addPatient': return <AddPatientModal onClose={closeModal} onSubmit={handleAddPatient} />;
+            case 'addAppointment': return <AddAppointmentModal onClose={closeModal} onSubmit={handleAddAppointment} patients={patients} />;
+            case 'addPayment': return <AddPaymentModal onClose={closeModal} onSubmit={handleAddPayment} patients={patients} />;
+            default: return null;
+        }
+    };
+
+    return (
+        <div className="bg-gray-100 text-gray-900 min-h-screen font-sans">
+            <div className="flex flex-col md:flex-row">
+                <Sidebar page={page} setPage={setPage} clinicName={clinic?.name} onLogout={handleLogout} />
+                <main className="flex-1 p-4 md:p-8 md:ml-64">
+                    <Header page={page} onAddClick={() => openModal(`add${page.charAt(0).toUpperCase() + page.slice(1, -1)}`)} />
+                    <div className="mt-8">{renderPage()}</div>
+                </main>
+            </div>
+            {renderModal()}
+            <BottomNav page={page} setPage={setPage} onLogout={handleLogout} />
+        </div>
+    );
 };
 
+
+// --- Top-Level App Component (Rebuilt for Stability) ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing');
+    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error'
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
@@ -155,14 +251,15 @@ const App = () => {
                 setDb(dbInstance);
 
                 const unsubscribe = onAuthStateChanged(authInstance, (authUser) => {
+                    setAppState(authUser ? 'authenticated' : 'unauthenticated');
                     setUser(authUser);
-                    setAppState('ready');
                 });
                 return () => unsubscribe();
             } else {
                 setAppState('error');
             }
         } catch (e) {
+            console.error("CRITICAL: Firebase initialization failed.", e);
             setAppState('error');
         }
     }, []);
@@ -183,10 +280,18 @@ const App = () => {
     const openForgotPasswordModal = () => setIsModalOpen(true);
     const closeForgotPasswordModal = () => setIsModalOpen(false);
 
-    if (appState === 'initializing') return <LoadingSpinner />;
-    if (appState === 'error') return <ErrorDisplay message="A critical error occurred." />;
-    if (user) return <MainApp user={user} auth={auth} db={db} />;
+    if (appState === 'initializing') {
+        return <LoadingSpinner message="Connecting to services..." />;
+    }
     
+    if (appState === 'error') {
+        return <ErrorDisplay message="A critical error occurred. Could not load the application." />;
+    }
+
+    if (appState === 'authenticated') {
+        return <MainApp user={user} auth={auth} db={db} />;
+    }
+
     return (
         <>
             <AuthPage onLogin={handleLogin} onSignUp={handleSignUp} onForgotPasswordClick={openForgotPasswordModal} />
