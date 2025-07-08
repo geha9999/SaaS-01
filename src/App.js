@@ -12,7 +12,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, collection, doc, addDoc, setDoc, getDoc, onSnapshot, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle } from 'lucide-react';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle, Shield, FileText, Globe, CreditCard } from 'lucide-react';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -386,10 +386,12 @@ const MainApp = ({ user, auth, db }) => {
 
 // --- Top-Level App Component ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error', 'email-verification'
+    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error', 'email-verification', 'onboarding'
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
+    const [userProfile, setUserProfile] = useState(null);
+    const [clinic, setClinic] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
@@ -413,8 +415,9 @@ const App = () => {
                         if (authUser) {
                             // IMPORTANT: Check if email is verified
                             if (authUser.emailVerified) {
-                                console.log('Email verified - allowing access');
-                                setAppState('authenticated');
+                                console.log('Email verified - checking onboarding status');
+                                // Don't set authenticated yet - check onboarding first
+                                setAppState('checking-onboarding');
                             } else {
                                 console.log('Email NOT verified - showing verification screen');
                                 setAppState('email-verification');
@@ -422,6 +425,8 @@ const App = () => {
                         } else {
                             console.log('No user - showing login screen');
                             setAppState('unauthenticated');
+                            setUserProfile(null);
+                            setClinic(null);
                         }
                     } catch (error) {
                         console.error('Error in auth state change:', error);
@@ -437,6 +442,49 @@ const App = () => {
             setAppState('error');
         }
     }, []);
+
+    // Check onboarding status when user is verified
+    useEffect(() => {
+        if (appState !== 'checking-onboarding' || !user || !db) return;
+
+        const checkOnboardingStatus = async () => {
+            try {
+                const userProfileRef = doc(db, "users", user.uid);
+                const userProfileSnap = await getDoc(userProfileRef);
+                
+                if (userProfileSnap.exists()) {
+                    const userData = userProfileSnap.data();
+                    setUserProfile({ id: userProfileSnap.id, ...userData });
+                    
+                    // Get clinic data
+                    if (userData.clinicId) {
+                        const clinicRef = doc(db, "clinics", userData.clinicId);
+                        const clinicSnap = await getDoc(clinicRef);
+                        if (clinicSnap.exists()) {
+                            setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
+                        }
+                    }
+                    
+                    // Check if onboarding is completed
+                    if (userData.onboardingCompleted) {
+                        console.log('Onboarding completed - allowing access');
+                        setAppState('authenticated');
+                    } else {
+                        console.log('Onboarding not completed - showing onboarding');
+                        setAppState('onboarding');
+                    }
+                } else {
+                    console.error('User profile not found');
+                    setAppState('error');
+                }
+            } catch (error) {
+                console.error('Error checking onboarding status:', error);
+                setAppState('error');
+            }
+        };
+
+        checkOnboardingStatus();
+    }, [appState, user, db]);
 
     const handleLogin = async (email, password) => {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -524,6 +572,42 @@ const App = () => {
         }
     };
 
+    const handleOnboardingComplete = async (consentData) => {
+        if (!user || !db || !userProfile) return;
+
+        try {
+            // Save consent data
+            await addDoc(collection(db, "consents"), {
+                userId: user.uid,
+                clinicId: userProfile.clinicId,
+                ...consentData,
+                createdAt: serverTimestamp()
+            });
+
+            // Mark onboarding as completed
+            const userProfileRef = doc(db, "users", user.uid);
+            await setDoc(userProfileRef, { 
+                onboardingCompleted: true,
+                onboardingCompletedAt: serverTimestamp()
+            }, { merge: true });
+
+            // Update clinic status
+            if (userProfile.clinicId) {
+                const clinicRef = doc(db, "clinics", userProfile.clinicId);
+                await setDoc(clinicRef, { 
+                    status: 'onboarding_completed',
+                    onboardingCompletedAt: serverTimestamp()
+                }, { merge: true });
+            }
+
+            console.log('Onboarding completed successfully');
+            setAppState('authenticated');
+        } catch (error) {
+            console.error('Error completing onboarding:', error);
+            throw error;
+        }
+    };
+
     const handleLogoutFromVerification = () => {
         signOut(auth);
     };
@@ -531,8 +615,8 @@ const App = () => {
     const openForgotPasswordModal = () => setIsModalOpen(true);
     const closeForgotPasswordModal = () => setIsModalOpen(false);
 
-    if (appState === 'initializing') {
-        return <LoadingSpinner message="Connecting to services..." />;
+    if (appState === 'initializing' || appState === 'checking-onboarding') {
+        return <LoadingSpinner message={appState === 'checking-onboarding' ? "Setting up your account..." : "Connecting to services..."} />;
     }
     
     if (appState === 'error') {
@@ -547,6 +631,16 @@ const App = () => {
                 onResendVerification={handleResendVerification}
                 onCheckVerification={handleCheckVerification}
                 onLogout={handleLogoutFromVerification}
+            />
+        );
+    }
+
+    if (appState === 'onboarding') {
+        return (
+            <OnboardingPage 
+                onComplete={handleOnboardingComplete}
+                userProfile={userProfile}
+                clinic={clinic}
             />
         );
     }
