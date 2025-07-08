@@ -26,6 +26,7 @@ const firebaseConfig = {
 
 // --- Helper function for user-friendly error messages ---
 const getFriendlyAuthError = (error) => {
+    console.log('Auth error details:', error);
     if (!error || !error.code) return 'An unexpected error occurred. Please try again.';
     switch (error.code) {
         case 'auth/email-already-in-use': return 'This email address is already registered. Please try signing in instead.';
@@ -33,9 +34,12 @@ const getFriendlyAuthError = (error) => {
         case 'auth/user-not-found': return 'No account found with this email. Please check the email or register a new clinic.';
         case 'auth/invalid-email': return 'Please enter a valid email address.';
         case 'auth/weak-password': return 'The password is too weak. It must be at least 6 characters long.';
-        case 'auth/invalid-credential': return 'Invalid email or password. Please try again.';
+        case 'auth/invalid-credential': return 'Invalid email or password. Please check your credentials and try again.';
+        case 'auth/invalid-login-credentials': return 'Invalid email or password. Please check your credentials and try again.';
         case 'auth/too-many-requests': return 'Too many failed attempts. Please wait a moment and try again.';
-        default: return 'An unexpected error occurred. Please try again.';
+        case 'auth/network-request-failed': return 'Network error. Please check your internet connection.';
+        case 'auth/user-disabled': return 'This account has been disabled. Please contact support.';
+        default: return `Authentication error: ${error.message || 'Please try again.'}`;
     }
 };
 
@@ -449,12 +453,16 @@ const App = () => {
     };
 
     const handleSignUp = async (email, password, clinicName) => {
+        console.log('Starting sign-up process for:', email);
+        
         // Create user account
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
+        console.log('User created:', newUser.email);
         
         // Send verification email
         await sendEmailVerification(newUser);
+        console.log('Verification email sent');
         
         // Create clinic and user profile (but user can't access until verified)
         const batch = writeBatch(db);
@@ -473,9 +481,11 @@ const App = () => {
             createdAt: serverTimestamp()
         });
         await batch.commit();
+        console.log('Clinic and user profile created');
         
         // IMMEDIATELY sign out the user so they can't access the app until verified
         await signOut(auth);
+        console.log('User signed out - must verify email first');
         
         // Force the auth state to update
         setAppState('unauthenticated');
