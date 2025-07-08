@@ -398,16 +398,24 @@ const App = () => {
                 setDb(dbInstance);
 
                 const unsubscribe = onAuthStateChanged(authInstance, (authUser) => {
+                    console.log('Auth state changed:', {
+                        user: authUser?.email || 'No user',
+                        emailVerified: authUser?.emailVerified || false
+                    });
+                    
                     setUser(authUser);
                     
                     if (authUser) {
-                        // Check if email is verified
+                        // IMPORTANT: Check if email is verified
                         if (authUser.emailVerified) {
+                            console.log('Email verified - allowing access');
                             setAppState('authenticated');
                         } else {
+                            console.log('Email NOT verified - showing verification screen');
                             setAppState('email-verification');
                         }
                     } else {
+                        console.log('No user - showing login screen');
                         setAppState('unauthenticated');
                     }
                 });
@@ -426,9 +434,12 @@ const App = () => {
         
         // Check if email is verified
         if (!userCredential.user.emailVerified) {
-            throw new Error('Please verify your email address before signing in.');
+            console.log('Login attempt with unverified email');
+            // Don't throw error, let the onAuthStateChanged handle showing verification screen
+            return userCredential;
         }
         
+        console.log('Login successful with verified email');
         return userCredential;
     };
 
@@ -458,8 +469,11 @@ const App = () => {
         });
         await batch.commit();
         
-        // Sign out the user so they can't access the app until verified
+        // IMMEDIATELY sign out the user so they can't access the app until verified
         await signOut(auth);
+        
+        // Force the auth state to update
+        setAppState('unauthenticated');
     };
 
     const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
