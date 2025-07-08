@@ -96,9 +96,6 @@ const MainApp = ({ user, auth, db }) => {
     const [userProfile, setUserProfile] = useState(null);
     const [clinic, setClinic] = useState(null);
     const [staff, setStaff] = useState([]);
-    const [patients, setPatients] = useState([]);
-    const [appointments, setAppointments] = useState([]);
-    const [payments, setPayments] = useState([]);
     const [pendingInvitations, setPendingInvitations] = useState([]);
     
     // --- Data Fetching Logic ---
@@ -125,9 +122,6 @@ const MainApp = ({ user, auth, db }) => {
 
         unsubscribers.push(onSnapshot(doc(db, "clinics", clinicId), (snap) => setClinic(snap.exists() ? {id: snap.id, ...snap.data()} : null) ));
         unsubscribers.push(onSnapshot(query(collection(db, "users"), where("clinicId", "==", clinicId)), (snap) => setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/patients`)), (snap) => setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/appointments`)), (snap) => setAppointments(snap.docs.map(a => ({...a.data(), id: a.id, dateTime: a.data().dateTime?.toDate() }))) ));
-        unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/payments`)), (snap) => setPayments(snap.docs.map(p => ({...p.data(), id: p.id, date: p.data().date?.toDate() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, "invitations"), where("clinicId", "==", clinicId), where("status", "==", "pending")), (snap) => setPendingInvitations(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         
         return () => unsubscribers.forEach(unsub => unsub());
@@ -139,16 +133,47 @@ const MainApp = ({ user, auth, db }) => {
     const closeModal = () => { setIsModalOpen(false); setModalContent(null); };
 
     const handleInviteStaff = async ({ email, role }) => {
-        if (!db || !userProfile || !clinic) return;
-        await addDoc(collection(db, "invitations"), {
-            clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
-        });
-        alert(`Invitation for ${email} has been created. They can now sign up with this email to join your clinic.`);
-        closeModal();
+        if (!db || !userProfile || !clinic) {
+            alert("Error: Not logged in or clinic data missing.");
+            return;
+        }
+        
+        // Call the backend helper to send the email
+        try {
+            const response = await fetch('/api/send-invitation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: email, clinicName: clinic.name, role }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send email.');
+            }
+
+            // If email sends successfully, create the invitation in the database
+            await addDoc(collection(db, "invitations"), {
+                clinicId: userProfile.clinicId,
+                clinicName: clinic.name,
+                invitedBy: user.uid,
+                email: email.toLowerCase(),
+                role: role,
+                status: "pending",
+                createdAt: serverTimestamp()
+            });
+            
+            alert(`Invitation sent to ${email}!`);
+            closeModal();
+        } catch (e) {
+            console.error("Error in invitation process: ", e);
+            alert("Failed to send invitation. Please check the email address and try again.");
+        }
     };
+
     const handleDeleteInvitation = async (invitationId) => {
         if (!db) return;
-        await deleteDoc(doc(db, "invitations", invitationId));
+        if(window.confirm("Are you sure you want to delete this invitation?")) {
+            await deleteDoc(doc(db, "invitations", invitationId));
+        }
     };
     
     if (!userProfile || !clinic) {
@@ -159,10 +184,7 @@ const MainApp = ({ user, auth, db }) => {
         switch (page) {
             case 'settings': return <SettingsPage onManageStaffClick={() => setPage('staff')} />;
             case 'staff': return <StaffPage staff={staff} pendingInvitations={pendingInvitations} onInviteClick={() => openModal('inviteStaff')} onDeleteInvitation={handleDeleteInvitation} userRole={userProfile.role}/>;
-            case 'patients': return <PatientsPage patients={patients} />;
-            case 'appointments': return <AppointmentsPage appointments={appointments} />;
-            case 'payments': return <PaymentsPage payments={payments} />;
-            default: return <DashboardPage patients={patients} appointments={appointments} payments={payments} />;
+            default: return <DashboardPage />;
         }
     };
 
@@ -192,7 +214,7 @@ const MainApp = ({ user, auth, db }) => {
 
 // --- Top-Level App Component (Rebuilt for Stability) ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error'
+    const [appState, setAppState] = useState('initializing');
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
