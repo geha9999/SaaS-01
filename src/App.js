@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, addDoc, setDoc, onSnapshot, query, where, serverTimestamp, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon } from 'lucide-react';
 
@@ -264,13 +264,27 @@ const App = () => {
 
     const handleLogin = (email, password) => signInWithEmailAndPassword(auth, email, password);
     const handleSignUp = async (email, password, clinicName) => {
+        const invitationsRef = collection(db, "invitations");
+        const q = query(invitationsRef, where("email", "==", email.toLowerCase()), where("status", "==", "pending"));
+        const invitationSnapshot = await getDocs(q);
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
         const batch = writeBatch(db);
-        const clinicRef = doc(collection(db, "clinics"));
-        batch.set(clinicRef, { name: clinicName, ownerId: newUser.uid, createdAt: serverTimestamp() });
-        const userProfileRef = doc(db, "users", newUser.uid);
-        batch.set(userProfileRef, { email: newUser.email, clinicId: clinicRef.id, role: 'owner' });
+
+        if (!invitationSnapshot.empty) {
+            const invitationDoc = invitationSnapshot.docs[0];
+            const invitationData = invitationDoc.data();
+            const userProfileRef = doc(db, "users", newUser.uid);
+            batch.set(userProfileRef, { email: newUser.email, clinicId: invitationData.clinicId, role: invitationData.role });
+            batch.delete(invitationDoc.ref);
+        } else {
+            const clinicRef = doc(collection(db, "clinics"));
+            batch.set(clinicRef, { name: clinicName, ownerId: newUser.uid, createdAt: serverTimestamp() });
+            const userProfileRef = doc(db, "users", newUser.uid);
+            batch.set(userProfileRef, { email: newUser.email, clinicId: clinicRef.id, role: 'owner' });
+        }
+        
         await batch.commit();
     };
     const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
