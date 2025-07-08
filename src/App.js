@@ -160,7 +160,7 @@ const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
                     </p>
                     <p className="text-sm text-gray-500 mb-8">
                         Please check your email and click the verification link to activate your account. 
-                        Once verified, you can sign in and start using TherapySaaS.
+                        Once verified, you can sign in and start using CLINICQ.
                     </p>
 
                     <Button onClick={onBackToLogin} className="w-full">
@@ -216,7 +216,7 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
             <div className="w-full max-w-sm mx-auto">
-                <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2"><Building />TherapySaaS</h1>
+                <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2"><Building />CLINICQ</h1>
                 <div className="bg-white p-8 rounded-xl shadow-lg">
                     <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">{isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}</h2>
                     <form onSubmit={handleSubmit} className="space-y-4 mt-6">
@@ -651,7 +651,7 @@ const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
         <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full"> 
             <div className="px-8 py-6">
                 <h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2">
-                    <Building />TherapySaaS
+                    <Building />CLINICQ
                 </h1>
             </div> 
             <nav className="flex-1 px-4"> 
