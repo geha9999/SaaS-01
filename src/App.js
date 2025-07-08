@@ -104,24 +104,32 @@ const MainApp = ({ user, auth, db }) => {
     // --- Data Fetching Logic ---
     useEffect(() => {
         if (!user || !db) return;
+
         const userProfileRef = doc(db, "users", user.uid);
         const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
-            if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
-            else signOut(auth);
+            if (docSnap.exists()) {
+                setUserProfile({ id: docSnap.id, ...docSnap.data() });
+            } else {
+                signOut(auth);
+            }
         });
+
         return () => unsubProfile();
     }, [user, db, auth]);
 
     useEffect(() => {
         if (!userProfile) return;
+
         const clinicId = userProfile.clinicId;
         const unsubscribers = [];
+
         unsubscribers.push(onSnapshot(doc(db, "clinics", clinicId), (snap) => setClinic(snap.exists() ? {id: snap.id, ...snap.data()} : null) ));
         unsubscribers.push(onSnapshot(query(collection(db, "users"), where("clinicId", "==", clinicId)), (snap) => setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/patients`)), (snap) => setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/appointments`)), (snap) => setAppointments(snap.docs.map(a => ({...a.data(), id: a.id, dateTime: a.data().dateTime?.toDate() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, `clinics/${clinicId}/payments`)), (snap) => setPayments(snap.docs.map(p => ({...p.data(), id: p.id, date: p.data().date?.toDate() }))) ));
         unsubscribers.push(onSnapshot(query(collection(db, "invitations"), where("clinicId", "==", clinicId), where("status", "==", "pending")), (snap) => setPendingInvitations(snap.docs.map(d => ({ id: d.id, ...d.data() }))) ));
+        
         return () => unsubscribers.forEach(unsub => unsub());
     }, [userProfile, db]);
 
@@ -132,7 +140,9 @@ const MainApp = ({ user, auth, db }) => {
 
     const handleInviteStaff = async ({ email, role }) => {
         if (!db || !userProfile || !clinic) return;
-        await addDoc(collection(db, "invitations"), { clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp() });
+        await addDoc(collection(db, "invitations"), {
+            clinicId: userProfile.clinicId, clinicName: clinic.name, invitedBy: user.uid, email: email.toLowerCase(), role: role, status: "pending", createdAt: serverTimestamp()
+        });
         alert(`Invitation for ${email} has been created. They can now sign up with this email to join your clinic.`);
         closeModal();
     };
@@ -141,7 +151,9 @@ const MainApp = ({ user, auth, db }) => {
         await deleteDoc(doc(db, "invitations", invitationId));
     };
     
-    if (!userProfile || !clinic) return <LoadingSpinner message="Loading Clinic Data..." />;
+    if (!userProfile || !clinic) {
+        return <LoadingSpinner message="Loading Clinic Data..." />;
+    }
 
     const renderPage = () => {
         switch (page) {
@@ -180,7 +192,7 @@ const MainApp = ({ user, auth, db }) => {
 
 // --- Top-Level App Component (Rebuilt for Stability) ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing');
+    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error'
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
@@ -200,8 +212,13 @@ const App = () => {
                     setUser(authUser);
                 });
                 return () => unsubscribe();
-            } else { setAppState('error'); }
-        } catch (e) { setAppState('error'); }
+            } else {
+                setAppState('error');
+            }
+        } catch (e) {
+            console.error("CRITICAL: Firebase initialization failed.", e);
+            setAppState('error');
+        }
     }, []);
 
     const handleLogin = (email, password) => signInWithEmailAndPassword(auth, email, password);
@@ -234,10 +251,18 @@ const App = () => {
     const openForgotPasswordModal = () => setIsModalOpen(true);
     const closeForgotPasswordModal = () => setIsModalOpen(false);
 
-    if (appState === 'initializing') return <LoadingSpinner />;
-    if (appState === 'error') return <ErrorDisplay message="A critical error occurred." />;
-    if (user) return <MainApp user={user} auth={auth} db={db} />;
+    if (appState === 'initializing') {
+        return <LoadingSpinner message="Connecting to services..." />;
+    }
     
+    if (appState === 'error') {
+        return <ErrorDisplay message="A critical error occurred. Could not load the application." />;
+    }
+
+    if (appState === 'authenticated') {
+        return <MainApp user={user} auth={auth} db={db} />;
+    }
+
     return (
         <>
             <AuthPage onLogin={handleLogin} onSignUp={handleSignUp} onForgotPasswordClick={openForgotPasswordModal} />
@@ -246,7 +271,7 @@ const App = () => {
     );
 };
 
-// --- Pages & Components ---
+// --- All other components remain below, unchanged ---
 const SettingsPage = ({ onManageStaffClick }) => ( <Card> <h3 className="text-xl font-bold mb-4">Clinic Settings</h3> <p className="text-gray-600 mb-6">Manage your clinic profile, staff, and subscription here.</p> <Button onClick={onManageStaffClick}><Briefcase className="mr-2"/> Manage Staff</Button> </Card> );
 const StaffPage = ({ staff, pendingInvitations, onInviteClick, onDeleteInvitation, userRole }) => (
     <div>
@@ -302,7 +327,7 @@ const PatientsPage = ({ patients }) => ( <Card> <h3 className="text-xl font-bold
 const AppointmentsPage = ({ appointments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Appointments</h3> <p>{appointments.length} appointments.</p> </Card> );
 const PaymentsPage = ({ payments }) => ( <Card> <h3 className="text-xl font-bold mb-4">Payments</h3> <p>{payments.length} payments.</p> </Card> );
 const Sidebar = ({ page, setPage, clinicName, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'appointments', label: 'Appointments', icon: Calendar }, { id: 'payments', label: 'Payments', icon: DollarSign }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <aside className="hidden md:flex flex-col w-64 bg-white border-r fixed h-full"> <div className="px-8 py-6"><h1 className="text-2xl font-bold text-blue-600 flex items-center gap-2"><Building />TherapySaaS</h1></div> <nav className="flex-1 px-4"> <div className="px-4 py-2 mb-2"> <p className="text-sm text-gray-500">CLINIC</p> <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p> </div> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}> {React.createElement(item.icon, { className: "w-5 h-5 mr-3" })} <span className="font-medium">{item.label}</span> </button> ))} </nav> <div className="p-4 border-t"><button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700"><LogOut className="w-4 h-4 mr-2" />Logout</button></div> </aside> ); };
-const BottomNav = ({ page, setPage, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50"> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/4 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}> {React.createElement(item.icon, { className: "w-6 h-6" })} <span className="text-xs mt-1">{item.label}</span> </button>))} <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/4"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button> </nav> ); };
+const BottomNav = ({ page, setPage, onLogout }) => { const navItems = [ { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'patients', label: 'Patients', icon: Users }, { id: 'settings', label: 'Settings', icon: SettingsIcon }, ]; return ( <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 z-50"> {navItems.map(item => ( <button key={item.id} onClick={() => setPage(item.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors w-1/3 ${ page === item.id ? 'text-blue-600' : 'text-gray-500'}`}> {React.createElement(item.icon, { className: "w-6 h-6" })} <span className="text-xs mt-1">{item.label}</span> </button>))} <button onClick={onLogout} className="flex flex-col items-center p-2 rounded-lg text-red-500 w-1/3"><LogOut className="w-6 h-6" /><span className="text-xs mt-1">Logout</span></button> </nav> ); };
 const Header = ({ page }) => { const title = page.charAt(0).toUpperCase() + page.slice(1); return ( <div className="flex justify-between items-center pb-4 mb-4 md:mb-0 border-b"> <h2 className="text-3xl font-bold">{title}</h2> </div> ); };
 const ForgotPasswordModal = ({ onClose, onSubmit }) => { const [email, setEmail] = useState(''); const [isSubmitting, setIsSubmitting] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(false); const handleSubmit = async (e) => { e.preventDefault(); setIsSubmitting(true); setError(''); setSuccess(false); try { await onSubmit(email); setSuccess(true); } catch (err) { setError(getFriendlyAuthError(err)); } finally { setIsSubmitting(false); } }; return ( <Modal onClose={onClose} title="Reset Your Password"> {success ? ( <div className="text-center"> <Mail className="mx-auto h-12 w-12 text-green-500" /> <h3 className="mt-2 text-lg font-medium text-gray-900">Check your email</h3> <p className="mt-2 text-sm text-gray-500">If an account exists for that email, we have sent instructions to reset your password.</p> <div className="mt-4"> <Button onClick={onClose} className="w-full">Close</Button> </div> </div> ) : ( <form onSubmit={handleSubmit} className="space-y-4"> <p className="text-sm text-gray-600">Enter your email address and we will send you a link to reset your password.</p> <Input label="Email Address" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /> <Button type="submit" className="w-full" disabled={isSubmitting}> {isSubmitting ? 'Sending...' : <><Send className="mr-2" />Send Reset Link</>} </Button> {error && <p className="text-red-500 text-sm text-center">{error}</p>} </form> )} </Modal> ); };
 const InviteStaffModal = ({ onClose, onSubmit }) => { const [formData, setFormData] = useState({ email: '', role: 'doctor' }); const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value }); const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); }; return ( <Modal onClose={onClose} title="Invite New Staff Member"> <form onSubmit={handleSubmit} className="space-y-4"> <Input label="Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required /> <Select label="Role" name="role" value={formData.role} onChange={handleChange}> <option value="doctor">Doctor</option> <option value="admin">Admin</option> </Select> <Button type="submit" className="w-full"><Send className="mr-2" />Send Invitation</Button> </form> </Modal> ); };
