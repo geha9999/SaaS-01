@@ -540,61 +540,90 @@ const PricingManagement = () => {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
 
-  // Function to create subscription payment
-  const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
-    setIsCreatingPayment(true);
+// Enhanced debugging version of payment creation function
+const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
+  setIsCreatingPayment(true);
+  
+  try {
+    // Determine amount based on plan
+    const amount = plan === 'monthly' ? pricingConfig.monthly_usd : pricingConfig.annual_usd;
+    const orderId = `${clinicId}_${plan}_${Date.now()}`;
     
-    try {
-      // Determine amount based on plan
-      const amount = plan === 'monthly' ? pricingConfig.monthly_usd : pricingConfig.annual_usd;
-      const orderId = `${clinicId}_${plan}_${Date.now()}`;
+    console.log('=== PAYMENT CREATION DEBUG ===');
+    console.log('Creating payment for:', { clinicId, clinicName, plan, amount });
+    console.log('Order ID:', orderId);
+    console.log('API Key exists:', !!NOWPaymentsService.apiKey);
+    console.log('API Key first 10 chars:', NOWPaymentsService.apiKey?.substring(0, 10) + '...');
+    
+    // Create payment with NOWPayments
+    const paymentData = {
+      price_amount: amount,
+      price_currency: 'USD',
+      pay_currency: 'USDT',
+      order_id: orderId,
+      order_description: `CLINICQ ${plan} subscription for ${clinicName}`,
+      ipn_callback_url: `${window.location.origin}/api/payment-webhook`,
+      success_url: `${window.location.origin}/payment-success`,
+      cancel_url: `${window.location.origin}/payment-cancel`
+    };
+    
+    console.log('Payment data being sent:', paymentData);
+    
+    const payment = await NOWPaymentsService.createPayment(paymentData);
+    
+    console.log('=== PAYMENT RESPONSE ===');
+    console.log('Full response:', payment);
+    console.log('Payment URL:', payment.payment_url);
+    console.log('Payment ID:', payment.payment_id);
+    console.log('Payment Status:', payment.payment_status);
+    
+    // Check if we got a valid response
+    if (payment.payment_url) {
+      console.log('✅ Payment URL received successfully');
       
-      console.log('Creating payment for:', { clinicId, clinicName, plan, amount });
-      
-      // Create payment with NOWPayments
-      const payment = await NOWPaymentsService.createPayment({
-        price_amount: amount,
-        price_currency: 'USD',
-        pay_currency: 'USDT',
-        order_id: orderId,
-        order_description: `CLINICQ ${plan} subscription for ${clinicName}`,
-        ipn_callback_url: `${window.location.origin}/api/payment-webhook`,
-        success_url: `${window.location.origin}/payment-success`,
-        cancel_url: `${window.location.origin}/payment-cancel`
+      // Save payment record to Firestore
+      await addDoc(collection(db, "payments"), {
+        clinicId,
+        clinicName,
+        paymentId: payment.payment_id,
+        orderId,
+        amount,
+        currency: 'USDT',
+        status: payment.payment_status || 'waiting',
+        plan,
+        paymentUrl: payment.payment_url,
+        fullResponse: payment, // Save full response for debugging
+        createdAt: serverTimestamp(),
+        createdBy: user.uid
       });
 
-      if (payment.payment_url) {
-        // Save payment record to Firestore
-        await addDoc(collection(db, "payments"), {
-          clinicId,
-          clinicName,
-          paymentId: payment.payment_id,
-          orderId,
-          amount,
-          currency: 'USDT',
-          status: 'waiting',
-          plan,
-          paymentUrl: payment.payment_url,
-          createdAt: serverTimestamp(),
-          createdBy: user.uid
-        });
-
-        // Open payment page in new tab
-        window.open(payment.payment_url, '_blank');
-        
-        alert(`Payment link created! Opening payment page for ${clinicName}`);
-      } else {
-        throw new Error('No payment URL received');
-      }
+      // Open payment page in new tab
+      window.open(payment.payment_url, '_blank');
       
-    } catch (error) {
-      console.error('Payment creation failed:', error);
-      alert(`Payment creation failed: ${error.message}`);
-    } finally {
-      setIsCreatingPayment(false);
+      alert(`✅ Payment link created successfully! Opening payment page for ${clinicName}`);
+      
+    } else if (payment.message) {
+      // Check for error message in response
+      console.error('❌ NOWPayments error message:', payment.message);
+      alert(`❌ Payment creation failed: ${payment.message}`);
+      
+    } else {
+      // No payment URL and no clear error message
+      console.error('❌ Unexpected response structure:', payment);
+      alert(`❌ Unexpected response from payment provider. Check console for details.`);
     }
-  };
-
+    
+  } catch (error) {
+    console.error('=== PAYMENT ERROR ===');
+    console.error('Error details:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    alert(`❌ Payment creation failed: ${error.message}`);
+  } finally {
+    setIsCreatingPayment(false);
+  }
+};
   const handleSavePricing = async () => {
     try {
       await setDoc(doc(db, "system_config", "pricing"), {
