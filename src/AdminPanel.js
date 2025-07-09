@@ -617,7 +617,6 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
       */
       
       // Open payment page in new tab
-      alert(`Payment created! Send ${payment.pay_amount} USDT to: ${payment.pay_address}`);
       alert(`✅ Payment link created successfully! Opening payment page for ${clinicName}`);
       
     } else if (payment.message) {
