@@ -599,6 +599,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
       console.log('✅ Payment URL received successfully');
       
       // Save payment record to Firestore
+      /*
       await addDoc(collection(db, "payments"), {
         clinicId,
         clinicName,
@@ -613,7 +614,8 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
         createdAt: serverTimestamp(),
         createdBy: user.uid
       });
-
+      */
+      
       // Open payment page in new tab
       alert(`Payment created! Send ${payment.pay_amount} USDT to: ${payment.pay_address}`);
       alert(`✅ Payment link created successfully! Opening payment page for ${clinicName}`);
