@@ -1,6 +1,7 @@
-// src/CashierSystem.js - Replace entire file with this
+// src/CashierSystem.js - Updated with Telegram Integration
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Receipt, Send, Printer, User, Calendar, Clock, DollarSign, Eye, Settings } from 'lucide-react';
+import { sendTransactionNotification } from './services/telegramService';
 
 const CashierSystem = ({ currentUser, clinicData }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -8,6 +9,7 @@ const CashierSystem = ({ currentUser, clinicData }) => {
   const [additionalItems, setAdditionalItems] = useState([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastTransaction, setLastTransaction] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Mock data - pending patient cases (who finished treatment, waiting to pay)
   const [pendingCases, setPendingCases] = useState([
@@ -138,45 +140,64 @@ const CashierSystem = ({ currentUser, clinicData }) => {
     }
   };
 
-  const processPayment = () => {
-    const transaction = {
-      id: Date.now(),
-      caseId: selectedPatient.id,
-      patientName: selectedPatient.patientName,
-      patientBirthDate: selectedPatient.patientBirthDate,
-      doctor: selectedPatient.doctor,
-      visitDate: selectedPatient.visitDate,
-      visitTime: selectedPatient.visitTime,
-      originalServices: selectedPatient.services,
-      originalMedications: selectedPatient.medications,
-      additionalItems: additionalItems,
-      originalAmount: selectedPatient.totalAmount,
-      additionalAmount: additionalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-      totalAmount: calculateTotal(),
-      systemFee: calculateSystemFee(), // Your revenue (hidden)
-      timestamp: new Date().toISOString(),
-      cashier: currentUser?.email || 'cashier',
-      clinicInfo: {
-        name: clinicData?.name || 'Clinic Name',
-        address: clinicData?.address || 'Clinic Address',
-        phone: clinicData?.phone || 'Phone Number'
+  const processPayment = async () => {
+    setIsProcessing(true);
+    
+    try {
+      const transaction = {
+        id: Date.now(),
+        caseId: selectedPatient.id,
+        patientName: selectedPatient.patientName,
+        patientBirthDate: selectedPatient.patientBirthDate,
+        doctor: selectedPatient.doctor,
+        visitDate: selectedPatient.visitDate,
+        visitTime: selectedPatient.visitTime,
+        originalServices: selectedPatient.services,
+        originalMedications: selectedPatient.medications,
+        additionalItems: additionalItems,
+        originalAmount: selectedPatient.totalAmount,
+        additionalAmount: additionalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+        totalAmount: calculateTotal(),
+        systemFee: calculateSystemFee(), // Your revenue (hidden)
+        timestamp: new Date().toISOString(),
+        cashier: currentUser?.email || 'cashier',
+        clinicInfo: {
+          name: clinicData?.name || 'Clinic Name',
+          address: clinicData?.address || 'Clinic Address',
+          phone: clinicData?.phone || 'Phone Number'
+        }
+      };
+
+      // Send Telegram notification to admin
+      try {
+        await sendTransactionNotification(transaction);
+        console.log('✅ Telegram notification sent successfully');
+      } catch (error) {
+        console.error('❌ Failed to send Telegram notification:', error);
+        // Continue processing even if notification fails
       }
-    };
 
-    setLastTransaction(transaction);
-    setShowReceipt(true);
-    
-    // Remove from pending cases
-    setPendingCases(prev => prev.filter(case_ => case_.id !== selectedPatient.id));
-    
-    // Reset
-    setSelectedPatient(null);
-    setAdditionalItems([]);
-    setPatientSearch({ name: '', birthDate: '' });
+      setLastTransaction(transaction);
+      setShowReceipt(true);
+      
+      // Remove from pending cases
+      setPendingCases(prev => prev.filter(case_ => case_.id !== selectedPatient.id));
+      
+      // Reset
+      setSelectedPatient(null);
+      setAdditionalItems([]);
+      setPatientSearch({ name: '', birthDate: '' });
 
-    // Log transaction for revenue tracking
-    console.log('Transaction processed:', transaction);
-    console.log('System fee earned:', transaction.systemFee);
+      // Log transaction for revenue tracking
+      console.log('Transaction processed:', transaction);
+      console.log('System fee earned:', transaction.systemFee);
+      
+    } catch (error) {
+      console.error('❌ Error processing payment:', error);
+      alert('Error processing payment. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const PatientIdentification = () => (
@@ -401,10 +422,15 @@ const CashierSystem = ({ currentUser, clinicData }) => {
           {/* Payment Button */}
           <button
             onClick={processPayment}
-            className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 flex items-center justify-center gap-2"
+            disabled={isProcessing}
+            className={`w-full py-3 rounded-lg flex items-center justify-center gap-2 ${
+              isProcessing 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-green-500 hover:bg-green-600'
+            } text-white`}
           >
             <Receipt className="w-5 h-5" />
-            Process Payment
+            {isProcessing ? 'Processing...' : 'Process Payment'}
           </button>
         </div>
       </div>
@@ -518,6 +544,9 @@ const CashierSystem = ({ currentUser, clinicData }) => {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Clinic Cashier System</h1>
           <p className="text-gray-600">Process payments for patients who have completed their treatment</p>
+          <div className="mt-2 text-sm text-gray-500">
+            💬 Telegram notifications enabled for admin (Chat ID: 2185881)
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
