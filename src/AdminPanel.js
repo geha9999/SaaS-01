@@ -608,7 +608,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
         currency: 'USDT-ERC20',
         status: payment.payment_status || 'waiting',
         plan,
-        paymentUrl: payment.payment_url,
+        paymentUrl: payment.payment_address || null,
         fullResponse: payment, // Save full response for debugging
         createdAt: serverTimestamp(),
         createdBy: user.uid
