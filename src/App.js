@@ -14,6 +14,9 @@ import { getFirestore, collection, doc, addDoc, setDoc, getDoc, onSnapshot, quer
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle, Shield, FileText, Globe, CreditCard } from 'lucide-react';
 
+// Import the AdminPanel component
+import AdminPanel from './AdminPanel';
+
 // --- Firebase Configuration ---
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_API_KEY,
@@ -42,6 +45,9 @@ const getFriendlyAuthError = (error) => {
         default: return `Authentication error: ${error.message || 'Please try again.'}`;
     }
 };
+
+// --- Define the SaaS owner email ---
+const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
 
 // --- UI Components ---
 const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> );
@@ -240,15 +246,36 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     );
 };
 
+// --- Onboarding Component (placeholder - you can replace with your actual onboarding) ---
+const OnboardingPage = ({ onComplete, userProfile, clinic }) => {
+    return (
+        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
+            <div className="w-full max-w-md mx-auto">
+                <div className="bg-white p-8 rounded-xl shadow-lg text-center">
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">Welcome to CLINICQ!</h2>
+                    <p className="text-gray-600 mb-6">
+                        Complete your clinic setup to get started.
+                    </p>
+                    <Button onClick={() => onComplete({
+                        termsAccepted: true,
+                        privacyAccepted: true,
+                        language: 'en'
+                    })} className="w-full">
+                        Complete Setup
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Main Application View (for logged-in users) ---
-const MainApp = ({ user, auth, db }) => {
+const MainApp = ({ user, auth, db, userProfile, clinic }) => {
     const [page, setPage] = useState('dashboard');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalContent, setModalContent] = useState(null);
 
     // Data states
-    const [userProfile, setUserProfile] = useState(null);
-    const [clinic, setClinic] = useState(null);
     const [staff, setStaff] = useState([]);
     const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
@@ -256,30 +283,10 @@ const MainApp = ({ user, auth, db }) => {
     
     // --- Data Fetching Logic ---
     useEffect(() => {
-        if (!user || !db) return;
-
-        const userProfileRef = doc(db, "users", user.uid);
-        const unsubProfile = onSnapshot(userProfileRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setUserProfile({ id: docSnap.id, ...docSnap.data() });
-            } else {
-                signOut(auth);
-            }
-        });
-
-        return () => unsubProfile();
-    }, [user, db, auth]);
-
-    useEffect(() => {
-        if (!userProfile) return;
+        if (!userProfile || !clinic) return;
 
         const clinicId = userProfile.clinicId;
         const unsubscribers = [];
-
-        const clinicRef = doc(db, "clinics", clinicId);
-        unsubscribers.push(onSnapshot(clinicRef, (clinicSnap) => {
-            if (clinicSnap.exists()) setClinic({ id: clinicSnap.id, ...clinicSnap.data() });
-        }));
 
         const staffQuery = query(collection(db, "users"), where("clinicId", "==", clinicId));
         unsubscribers.push(onSnapshot(staffQuery, (staffSnapshot) => {
@@ -298,7 +305,7 @@ const MainApp = ({ user, auth, db }) => {
         });
         
         return () => unsubscribers.forEach(unsub => unsub());
-    }, [userProfile, db]);
+    }, [userProfile, db, clinic]);
 
     // --- Actions ---
     const handleLogout = () => signOut(auth);
@@ -343,10 +350,6 @@ const MainApp = ({ user, auth, db }) => {
         await setDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status }, { merge: true });
     };
 
-    if (!userProfile || !clinic) {
-        return <LoadingSpinner message="Loading Clinic Data..." />;
-    }
-
     const renderPage = () => {
         switch (page) {
             case 'settings': return <SettingsPage clinic={clinic} />;
@@ -386,13 +389,14 @@ const MainApp = ({ user, auth, db }) => {
 
 // --- Top-Level App Component ---
 const App = () => {
-    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error', 'email-verification', 'onboarding'
+    const [appState, setAppState] = useState('initializing'); // 'initializing', 'authenticated', 'unauthenticated', 'error', 'email-verification', 'onboarding', 'admin'
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
     const [clinic, setClinic] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isChecking, setIsChecking] = useState(false);
 
     useEffect(() => {
         try {
@@ -413,10 +417,16 @@ const App = () => {
                         setUser(authUser);
                         
                         if (authUser) {
-                            // IMPORTANT: Check if email is verified
+                            // Check if this is the SaaS owner
+                            if (authUser.email === SAAS_OWNER_EMAIL) {
+                                console.log('SaaS owner detected - loading admin panel');
+                                setAppState('admin');
+                                return;
+                            }
+                            
+                            // For regular users, check email verification
                             if (authUser.emailVerified) {
                                 console.log('Email verified - checking onboarding status');
-                                // Don't set authenticated yet - check onboarding first
                                 setAppState('checking-onboarding');
                             } else {
                                 console.log('Email NOT verified - showing verification screen');
@@ -489,10 +499,15 @@ const App = () => {
     const handleLogin = async (email, password) => {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         
-        // Check if email is verified
+        // For SaaS owner, skip email verification check
+        if (email === SAAS_OWNER_EMAIL) {
+            console.log('SaaS owner login successful');
+            return userCredential;
+        }
+        
+        // Check if email is verified for regular users
         if (!userCredential.user.emailVerified) {
             console.log('Login attempt with unverified email');
-            // Don't throw error, let the onAuthStateChanged handle showing verification screen
             return userCredential;
         }
         
@@ -501,6 +516,11 @@ const App = () => {
     };
 
     const handleSignUp = async (email, password, clinicName) => {
+        // Prevent registration with SaaS owner email
+        if (email === SAAS_OWNER_EMAIL) {
+            throw new Error('This email is reserved for system administration.');
+        }
+        
         console.log('Starting sign-up process for:', email);
         
         // Create user account
@@ -562,7 +582,7 @@ const App = () => {
                         const clinicRef = doc(db, "clinics", userData.clinicId);
                         await setDoc(clinicRef, { status: 'active' }, { merge: true });
                     }
-                    setAppState('authenticated');
+                    setAppState('checking-onboarding');
                 }
             }
         } catch (error) {
@@ -623,6 +643,10 @@ const App = () => {
         return <ErrorDisplay message="A critical error occurred. Could not load the application." />;
     }
 
+    if (appState === 'admin') {
+        return <AdminPanel user={user} auth={auth} db={db} />;
+    }
+
     if (appState === 'email-verification') {
         return (
             <EmailVerificationScreen 
@@ -646,7 +670,7 @@ const App = () => {
     }
 
     if (appState === 'authenticated') {
-        return <MainApp user={user} auth={auth} db={db} />;
+        return <MainApp user={user} auth={auth} db={db} userProfile={userProfile} clinic={clinic} />;
     }
 
     return (
