@@ -145,22 +145,39 @@ const AdminPanel = ({ user, auth, db }) => {
       }
     ];
 
-        // TEST FUNCTION - we'll remove this later
-    const testPaymentConnection = async () => {
-        try {
-            alert('Testing payment connection... please wait');
-            console.log('Testing NOWPayments...');
+// TEST FUNCTION - we'll remove this later
+const testPaymentConnection = async () => {
+    try {
+        alert('Testing available currencies... please wait');
+        console.log('=== CHECKING AVAILABLE CURRENCIES ===');
+        
+        const currencies = await NOWPaymentsService.getAvailableCurrencies();
+        
+        console.log('Available currencies response:', currencies);
+        
+        if (currencies.currencies) {
+            console.log('✅ Available payment currencies:', currencies.currencies);
             
-            const currencies = await NOWPaymentsService.getAvailableCurrencies();
+            // Check if USDT is available
+            const hasUSDT = currencies.currencies.includes('usdt');
+            const hasBTC = currencies.currencies.includes('btc');
+            const hasETH = currencies.currencies.includes('eth');
             
-            alert('✅ SUCCESS! Payment service is working. Check console for details.');
-            console.log('Available currencies:', currencies);
-        } catch (error) {
-            alert('❌ ERROR: Payment service failed. Check console for details.');
-            console.error('Payment error:', error);
+            console.log('USDT available:', hasUSDT);
+            console.log('BTC available:', hasBTC);
+            console.log('ETH available:', hasETH);
+            
+            alert(`✅ Found ${currencies.currencies.length} currencies. USDT available: ${hasUSDT}`);
+        } else {
+            console.log('❌ No currencies in response');
+            alert('❌ Could not get currency list');
         }
-    };
-
+        
+    } catch (error) {
+        alert('❌ ERROR: Could not check currencies');
+        console.error('Currency check error:', error);
+    }
+};
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
