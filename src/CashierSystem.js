@@ -1,7 +1,8 @@
+// src/CashierSystem.js - Replace entire file with this
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Receipt, Send, Printer, User, Calendar, Clock, DollarSign, Eye, Settings } from 'lucide-react';
 
-const ProperCashierSystem = ({ currentUser, clinicData }) => {
+const CashierSystem = ({ currentUser, clinicData }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [additionalItems, setAdditionalItems] = useState([]);
@@ -77,6 +78,21 @@ const ProperCashierSystem = ({ currentUser, clinicData }) => {
     birthDate: ''
   });
 
+  // System fee calculation (your revenue)
+  const calculateSystemFee = () => {
+    const currentRate = 16675; // USD to IDR
+    const markupPercentage = 2;
+    const minimumThreshold = 2000;
+    
+    const baseFeeIDR = 0.10 * currentRate;
+    const markupAmount = (currentRate * markupPercentage) / 100;
+    const markedUpRate = currentRate + markupAmount;
+    const feeWithMarkup = 0.10 * markedUpRate;
+    const finalFee = Math.max(feeWithMarkup, minimumThreshold);
+    const roundedFee = finalFee > minimumThreshold ? Math.ceil(finalFee / 100) * 100 : finalFee;
+    return Math.round(roundedFee);
+  };
+
   const filteredCases = pendingCases.filter(case_ => {
     if (identificationMethod === 'manual') {
       const nameMatch = case_.patientName.toLowerCase().includes(patientSearch.name.toLowerCase());
@@ -137,6 +153,7 @@ const ProperCashierSystem = ({ currentUser, clinicData }) => {
       originalAmount: selectedPatient.totalAmount,
       additionalAmount: additionalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
       totalAmount: calculateTotal(),
+      systemFee: calculateSystemFee(), // Your revenue (hidden)
       timestamp: new Date().toISOString(),
       cashier: currentUser?.email || 'cashier',
       clinicInfo: {
@@ -156,6 +173,10 @@ const ProperCashierSystem = ({ currentUser, clinicData }) => {
     setSelectedPatient(null);
     setAdditionalItems([]);
     setPatientSearch({ name: '', birthDate: '' });
+
+    // Log transaction for revenue tracking
+    console.log('Transaction processed:', transaction);
+    console.log('System fee earned:', transaction.systemFee);
   };
 
   const PatientIdentification = () => (
@@ -528,4 +549,4 @@ const ProperCashierSystem = ({ currentUser, clinicData }) => {
   );
 };
 
-export default ProperCashierSystem;
+export default CashierSystem;
