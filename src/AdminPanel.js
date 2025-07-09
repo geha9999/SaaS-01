@@ -595,7 +595,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
     console.log('Payment Status:', payment.payment_status);
     
     // Check if we got a valid response
-    if (payment.payment_url) {
+    if (payment.payment_id && payment.pay_address) {
       console.log('✅ Payment URL received successfully');
       
       // Save payment record to Firestore
@@ -615,8 +615,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
       });
 
       // Open payment page in new tab
-      window.open(payment.payment_url, '_blank');
-      
+      alert(`Payment created! Send ${payment.pay_amount} USDT to: ${payment.pay_address}`);
       alert(`✅ Payment link created successfully! Opening payment page for ${clinicName}`);
       
     } else if (payment.message) {
