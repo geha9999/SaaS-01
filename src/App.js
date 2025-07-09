@@ -16,6 +16,7 @@ import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical,
 
 // Import the AdminPanel component
 import AdminPanel from './AdminPanel';
+import NOWPaymentsService from './services/nowPayments';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -397,6 +398,19 @@ const App = () => {
     const [clinic, setClinic] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
+
+        // TEST FUNCTION - Remove this later
+    const testPaymentService = async () => {
+        try {
+            console.log('Testing NOWPayments connection...');
+            const currencies = await NOWPaymentsService.getAvailableCurrencies();
+            console.log('✅ NOWPayments working! Currencies:', currencies);
+            alert('Payment service is working! Check browser console for details.');
+        } catch (error) {
+            console.error('❌ Payment service error:', error);
+            alert('Payment service error - check console');
+        }
+    };
 
     useEffect(() => {
         try {
