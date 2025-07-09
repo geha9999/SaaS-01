@@ -19,7 +19,8 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import NOWPaymentsService from './services/nowPayments';  // ← ADD THIS LINE
+import NOWPaymentsService from './services/nowPayments';
+import CashierSystem from './CashierSystem';
 
 // Admin Panel Main Component
 const AdminPanel = ({ user, auth, db }) => {
@@ -145,39 +146,6 @@ const AdminPanel = ({ user, auth, db }) => {
       }
     ];
 
-// TEST FUNCTION - we'll remove this later
-const testPaymentConnection = async () => {
-    try {
-        alert('Testing available currencies... please wait');
-        console.log('=== CHECKING AVAILABLE CURRENCIES ===');
-        
-        const currencies = await NOWPaymentsService.getAvailableCurrencies();
-        
-        console.log('Available currencies response:', currencies);
-        
-        if (currencies.currencies) {
-            console.log('✅ Available payment currencies:', currencies.currencies);
-            
-            // Check if USDT is available
-            const hasUSDT = currencies.currencies.includes('usdt');
-            const hasBTC = currencies.currencies.includes('btc');
-            const hasETH = currencies.currencies.includes('eth');
-            
-            console.log('USDT available:', hasUSDT);
-            console.log('BTC available:', hasBTC);
-            console.log('ETH available:', hasETH);
-            
-            alert(`✅ Found ${currencies.currencies.length} currencies. USDT available: ${hasUSDT}`);
-        } else {
-            console.log('❌ No currencies in response');
-            alert('❌ Could not get currency list');
-        }
-        
-    } catch (error) {
-        alert('❌ ERROR: Could not check currencies');
-        console.error('Currency check error:', error);
-    }
-};
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -214,15 +182,18 @@ const testPaymentConnection = async () => {
         <div className="bg-white p-6 rounded-xl shadow-md">
           <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <button 
-        onClick={testPaymentConnection}
-        className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
-    >
-        <DollarSign className="w-6 h-6 text-purple-600 mb-2" />
-        <p className="font-medium">Test Payments</p>
-        <p className="text-sm text-gray-500">Check NOWPayments connection</p>
-    </button>
-          
+
+          <button
+            onClick={() => setActiveSection('cashier')}
+            className={`w-full text-left px-4 py-2 rounded ${
+              activeSection === 'cashier' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-100'
+            }`}
+          >
+            💳 Cashier System
+          </button>
+
           <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
               <Users className="w-6 h-6 text-blue-600 mb-2" />
               <p className="font-medium">Manage Tenants</p>
