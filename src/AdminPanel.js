@@ -576,7 +576,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
     const paymentData = {
       price_amount: amount,
       price_currency: 'USD',
-      pay_currency: 'btc',
+      pay_currency: 'usdterc20',
       order_id: orderId,
       order_description: `CLINICQ ${plan} subscription for ${clinicName}`,
       ipn_callback_url: `${window.location.origin}/api/payment-webhook`,
@@ -605,7 +605,7 @@ const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
         paymentId: payment.payment_id,
         orderId,
         amount,
-        currency: 'BTC',
+        currency: 'USDT-ERC20',
         status: payment.payment_status || 'waiting',
         plan,
         paymentUrl: payment.payment_url,
