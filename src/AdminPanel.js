@@ -525,88 +525,214 @@ const AdminPanel = ({ user, auth, db }) => {
   };
 
   // Pricing Management Component
-  const PricingManagement = () => {
-    const [pricingConfig, setPricingConfig] = useState({
-      monthly_usd: 15,
-      annual_usd: 150,
-      transaction_fee_usd: 0.10,
-      transaction_fee_idr: 2000,
-      storage_basic_gb: 5,
-      storage_premium_gb: 50,
-      storage_enterprise_gb: 200
-    });
+// Enhanced Pricing Management Component with NOWPayments Integration
+const PricingManagement = () => {
+  const [pricingConfig, setPricingConfig] = useState({
+    monthly_usd: 15,
+    annual_usd: 150,
+    transaction_fee_usd: 0.10,
+    transaction_fee_idr: 2000,
+    storage_basic_gb: 5,
+    storage_premium_gb: 50,
+    storage_enterprise_gb: 200
+  });
 
-    const handleSavePricing = async () => {
-      try {
-        await setDoc(doc(db, "system_config", "pricing"), {
-          ...pricingConfig,
-          updatedAt: serverTimestamp(),
-          updatedBy: user.uid
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+
+  // Function to create subscription payment
+  const handleCreateSubscriptionPayment = async (clinicId, clinicName, plan) => {
+    setIsCreatingPayment(true);
+    
+    try {
+      // Determine amount based on plan
+      const amount = plan === 'monthly' ? pricingConfig.monthly_usd : pricingConfig.annual_usd;
+      const orderId = `${clinicId}_${plan}_${Date.now()}`;
+      
+      console.log('Creating payment for:', { clinicId, clinicName, plan, amount });
+      
+      // Create payment with NOWPayments
+      const payment = await NOWPaymentsService.createPayment({
+        price_amount: amount,
+        price_currency: 'USD',
+        pay_currency: 'USDT',
+        order_id: orderId,
+        order_description: `CLINICQ ${plan} subscription for ${clinicName}`,
+        ipn_callback_url: `${window.location.origin}/api/payment-webhook`,
+        success_url: `${window.location.origin}/payment-success`,
+        cancel_url: `${window.location.origin}/payment-cancel`
+      });
+
+      if (payment.payment_url) {
+        // Save payment record to Firestore
+        await addDoc(collection(db, "payments"), {
+          clinicId,
+          clinicName,
+          paymentId: payment.payment_id,
+          orderId,
+          amount,
+          currency: 'USDT',
+          status: 'waiting',
+          plan,
+          paymentUrl: payment.payment_url,
+          createdAt: serverTimestamp(),
+          createdBy: user.uid
         });
-        setIsEditing(false);
-        alert('Pricing updated successfully!');
-      } catch (error) {
-        console.error('Error saving pricing:', error);
-        alert('Error saving pricing configuration');
+
+        // Open payment page in new tab
+        window.open(payment.payment_url, '_blank');
+        
+        alert(`Payment link created! Opening payment page for ${clinicName}`);
+      } else {
+        throw new Error('No payment URL received');
       }
-    };
+      
+    } catch (error) {
+      console.error('Payment creation failed:', error);
+      alert(`Payment creation failed: ${error.message}`);
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  };
 
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">Pricing & Billing Management</h2>
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Edit3 size={16} />
-            {isEditing ? 'Cancel' : 'Edit Pricing'}
-          </button>
+  const handleSavePricing = async () => {
+    try {
+      await setDoc(doc(db, "system_config", "pricing"), {
+        ...pricingConfig,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
+      });
+      setIsEditing(false);
+      alert('Pricing updated successfully!');
+    } catch (error) {
+      console.error('Error saving pricing:', error);
+      alert('Error saving pricing configuration');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">Pricing & Billing Management</h2>
+        <button
+          onClick={() => setIsEditing(!isEditing)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+        >
+          <Edit3 size={16} />
+          {isEditing ? 'Cancel' : 'Edit Pricing'}
+        </button>
+      </div>
+
+      {/* Current Pricing Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500">
+          <h3 className="text-lg font-semibold mb-2">Monthly Plan</h3>
+          <p className="text-3xl font-bold text-blue-600">${pricingConfig.monthly_usd}</p>
+          <p className="text-sm text-gray-500">Per month in USDT</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
+          <h3 className="text-lg font-semibold mb-2">Annual Plan</h3>
+          <p className="text-3xl font-bold text-green-600">${pricingConfig.annual_usd}</p>
+          <p className="text-sm text-gray-500">Per year in USDT (17% discount)</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-orange-500">
+          <h3 className="text-lg font-semibold mb-2">Transaction Fee</h3>
+          <p className="text-2xl font-bold text-orange-600">
+            ${pricingConfig.transaction_fee_usd} / Rp{pricingConfig.transaction_fee_idr}
+          </p>
+          <p className="text-sm text-gray-500">Per patient payment</p>
+        </div>
+      </div>
+
+      {/* Payment Creation Section */}
+      <div className="bg-white p-6 rounded-xl shadow-md">
+        <h3 className="text-lg font-semibold mb-4">Create Subscription Payment</h3>
+        <p className="text-gray-600 mb-4">Generate payment links for clinic subscriptions</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Monthly Payment Button */}
+          <div className="border rounded-lg p-4">
+            <h4 className="font-semibold text-blue-600 mb-2">Monthly Subscription</h4>
+            <p className="text-2xl font-bold mb-2">${pricingConfig.monthly_usd} USDT</p>
+            <p className="text-sm text-gray-500 mb-4">Billed monthly</p>
+            <button
+              onClick={() => {
+                const clinicId = prompt('Enter Clinic ID:');
+                const clinicName = prompt('Enter Clinic Name:');
+                if (clinicId && clinicName) {
+                  handleCreateSubscriptionPayment(clinicId, clinicName, 'monthly');
+                }
+              }}
+              disabled={isCreatingPayment}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {isCreatingPayment ? 'Creating...' : 'Create Monthly Payment'}
+            </button>
+          </div>
+
+          {/* Annual Payment Button */}
+          <div className="border rounded-lg p-4">
+            <h4 className="font-semibold text-green-600 mb-2">Annual Subscription</h4>
+            <p className="text-2xl font-bold mb-2">${pricingConfig.annual_usd} USDT</p>
+            <p className="text-sm text-gray-500 mb-4">Billed annually (17% discount)</p>
+            <button
+              onClick={() => {
+                const clinicId = prompt('Enter Clinic ID:');
+                const clinicName = prompt('Enter Clinic Name:');
+                if (clinicId && clinicName) {
+                  handleCreateSubscriptionPayment(clinicId, clinicName, 'annual');
+                }
+              }}
+              disabled={isCreatingPayment}
+              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+            >
+              {isCreatingPayment ? 'Creating...' : 'Create Annual Payment'}
+            </button>
+          </div>
         </div>
 
-        {/* Current Pricing Overview */}
+        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm text-yellow-800">
+            <strong>How it works:</strong> Click a payment button, enter the clinic details, and a USDT payment link will be generated. 
+            The clinic owner will receive the payment link to complete their subscription.
+          </p>
+        </div>
+      </div>
+
+      {/* Revenue Analytics */}
+      <div className="bg-white p-6 rounded-xl shadow-md">
+        <h3 className="text-lg font-semibold mb-4">Revenue Analytics</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500">
-            <h3 className="text-lg font-semibold mb-2">Monthly Plan</h3>
-            <p className="text-3xl font-bold text-blue-600">${pricingConfig.monthly_usd}</p>
-            <p className="text-sm text-gray-500">Per month in USDT</p>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-blue-600">${systemStats.monthlyRevenue}</p>
+            <p className="text-sm text-gray-500">This Month</p>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
-            <h3 className="text-lg font-semibold mb-2">Annual Plan</h3>
-            <p className="text-3xl font-bold text-green-600">${pricingConfig.annual_usd}</p>
-            <p className="text-sm text-gray-500">Per year in USDT (17% discount)</p>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-green-600">${systemStats.totalRevenue}</p>
+            <p className="text-sm text-gray-500">Total Revenue</p>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-orange-500">
-            <h3 className="text-lg font-semibold mb-2">Transaction Fee</h3>
-            <p className="text-2xl font-bold text-orange-600">
-              ${pricingConfig.transaction_fee_usd} / Rp{pricingConfig.transaction_fee_idr}
-            </p>
-            <p className="text-sm text-gray-500">Per patient payment</p>
-          </div>
-        </div>
-
-        {/* Revenue Analytics */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h3 className="text-lg font-semibold mb-4">Revenue Analytics</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">${systemStats.monthlyRevenue}</p>
-              <p className="text-sm text-gray-500">This Month</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">${systemStats.totalRevenue}</p>
-              <p className="text-sm text-gray-500">Total Revenue</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-orange-600">${systemStats.transactionFees}</p>
-              <p className="text-sm text-gray-500">Transaction Fees</p>
-            </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-orange-600">${systemStats.transactionFees}</p>
+            <p className="text-sm text-gray-500">Transaction Fees</p>
           </div>
         </div>
       </div>
-    );
-  };
 
+      {/* Save Pricing Button */}
+      {isEditing && (
+        <div className="flex justify-end">
+          <button 
+            onClick={handleSavePricing}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Save size={16} />
+            Save Pricing Settings
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
   // System Settings Component
   const SystemSettings = () => {
     const [systemConfig, setSystemConfig] = useState({
