@@ -19,6 +19,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
+import NOWPaymentsService from './services/nowPayments';  // ← ADD THIS LINE
 
 // Admin Panel Main Component
 const AdminPanel = ({ user, auth, db }) => {
@@ -144,6 +145,22 @@ const AdminPanel = ({ user, auth, db }) => {
       }
     ];
 
+        // TEST FUNCTION - we'll remove this later
+    const testPaymentConnection = async () => {
+        try {
+            alert('Testing payment connection... please wait');
+            console.log('Testing NOWPayments...');
+            
+            const currencies = await NOWPaymentsService.getAvailableCurrencies();
+            
+            alert('✅ SUCCESS! Payment service is working. Check console for details.');
+            console.log('Available currencies:', currencies);
+        } catch (error) {
+            alert('❌ ERROR: Payment service failed. Check console for details.');
+            console.error('Payment error:', error);
+        }
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -180,7 +197,16 @@ const AdminPanel = ({ user, auth, db }) => {
         <div className="bg-white p-6 rounded-xl shadow-md">
           <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
+    <button 
+        onClick={testPaymentConnection}
+        className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+    >
+        <DollarSign className="w-6 h-6 text-purple-600 mb-2" />
+        <p className="font-medium">Test Payments</p>
+        <p className="text-sm text-gray-500">Check NOWPayments connection</p>
+    </button>
+          
+          <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left">
               <Users className="w-6 h-6 text-blue-600 mb-2" />
               <p className="font-medium">Manage Tenants</p>
               <p className="text-sm text-gray-500">View and manage clinic accounts</p>
