@@ -9,7 +9,7 @@ import {
   collection, 
   doc, 
   onSnapshot, 
-  query, 
+  query,  
   orderBy, 
   limit, 
   where,
