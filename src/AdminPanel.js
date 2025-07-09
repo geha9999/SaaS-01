@@ -18,7 +18,7 @@ import {
   serverTimestamp,
   getDoc
 } from 'firebase/firestore';
-import { signOut } from 'firebase-auth';
+import { signOut } from 'firebase/auth';
 import NOWPaymentsService from './services/nowPayments';
 import CashierSystem from './CashierSystem';
 
