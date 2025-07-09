@@ -21,6 +21,7 @@ import {
 import { signOut } from 'firebase/auth';
 import NOWPaymentsService from './services/nowPayments';
 import CashierSystem from './CashierSystem';
+import { testTelegramConnection } from './services/telegramService';
 
 // Admin Panel Main Component
 const AdminPanel = ({ user, auth, db }) => {
@@ -217,6 +218,15 @@ const AdminPanel = ({ user, auth, db }) => {
               <DollarSign className="w-6 h-6 text-orange-600 mb-2" />
               <p className="font-medium">Adjust Pricing</p>
               <p className="text-sm text-gray-500">Update subscription plans</p>
+            </button>
+
+            <button 
+              onClick={() => testTelegramConnection()}
+              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+            >
+              <Settings className="w-6 h-6 text-blue-600 mb-2" />
+              <p className="font-medium">Test Telegram</p>
+              <p className="text-sm text-gray-500">Test notification system</p>
             </button>
           </div>
         </div>
