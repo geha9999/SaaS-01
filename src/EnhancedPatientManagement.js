@@ -4,10 +4,6 @@ import {
   Calendar, MapPin, FileText, Heart, AlertTriangle, 
   Clock, MoreVertical, User, QrCode, Download, Upload
 } from 'lucide-react';
-import { 
-  collection, query, orderBy, onSnapshot, addDoc, updateDoc, 
-  doc, serverTimestamp, where 
-} from 'firebase/firestore';
 
 const EnhancedPatientManagement = ({ user, db, clinic, userProfile }) => {
   const [patients, setPatients] = useState([]);
@@ -21,29 +17,73 @@ const EnhancedPatientManagement = ({ user, db, clinic, userProfile }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showQRCode, setShowQRCode] = useState(null);
 
-  // Fetch patients
+  // Mock data for demonstration - replace with real Firebase integration
+  const mockPatients = [
+    {
+      id: 'p1',
+      patientId: 'P123456',
+      name: 'Budi Santoso',
+      email: 'budi@email.com',
+      phone: '+62 812 3456 7890',
+      birthDate: new Date('1985-03-15'),
+      gender: 'male',
+      bloodType: 'B+',
+      address: 'Jl. Merdeka No. 123, Jakarta',
+      emergencyContactName: 'Siti Santoso',
+      emergencyContactPhone: '+62 813 4567 8901',
+      allergies: 'Penicillin, Seafood',
+      medicalHistory: 'Hypertension, controlled with medication',
+      status: 'active',
+      createdAt: new Date('2024-01-15'),
+      lastVisit: new Date('2024-12-01')
+    },
+    {
+      id: 'p2',
+      patientId: 'P123457',
+      name: 'Siti Nurhaliza',
+      email: 'siti@email.com',
+      phone: '+62 821 2345 6789',
+      birthDate: new Date('1990-07-22'),
+      gender: 'female',
+      bloodType: 'A+',
+      address: 'Jl. Sudirman No. 456, Jakarta',
+      emergencyContactName: 'Ahmad Nurhaliza',
+      emergencyContactPhone: '+62 822 3456 7890',
+      allergies: '',
+      medicalHistory: 'No significant medical history',
+      status: 'active',
+      createdAt: new Date('2024-02-20'),
+      lastVisit: new Date('2024-11-28')
+    },
+    {
+      id: 'p3',
+      patientId: 'P123458',
+      name: 'Ahmad Fauzi',
+      email: 'ahmad@email.com',
+      phone: '+62 831 1234 5678',
+      birthDate: new Date('1978-11-08'),
+      gender: 'male',
+      bloodType: 'O+',
+      address: 'Jl. Thamrin No. 789, Jakarta',
+      emergencyContactName: 'Fatimah Fauzi',
+      emergencyContactPhone: '+62 832 2345 6789',
+      allergies: 'Dust, Pollen',
+      medicalHistory: 'Diabetes Type 2, under treatment',
+      status: 'active',
+      createdAt: new Date('2024-03-10'),
+      lastVisit: new Date('2024-12-05')
+    }
+  ];
+
+  // Fetch patients - replace with real Firebase integration
   useEffect(() => {
-    if (!db || !clinic?.id) return;
-
-    const patientsQuery = query(
-      collection(db, `clinics/${clinic.id}/patients`),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
-      const patientsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        lastVisit: doc.data().lastVisit?.toDate(),
-        birthDate: doc.data().birthDate ? new Date(doc.data().birthDate) : null
-      }));
-      setPatients(patientsData);
+    // Simulate loading
+    setIsLoading(true);
+    setTimeout(() => {
+      setPatients(mockPatients);
       setIsLoading(false);
-    });
-
-    return unsubscribe;
-  }, [db, clinic?.id]);
+    }, 1000);
+  }, [clinic?.id]);
 
   // Calculate age from birth date
   const calculateAge = (birthDate) => {
@@ -76,22 +116,27 @@ const EnhancedPatientManagement = ({ user, db, clinic, userProfile }) => {
     return matchesSearch && matchesAge && matchesGender && matchesStatus;
   });
 
-  // Add new patient
+  // Add new patient - replace with real Firebase integration
   const handleAddPatient = async (patientData) => {
     try {
       // Generate patient ID
       const patientId = `P${Date.now().toString().slice(-6)}`;
       
-      await addDoc(collection(db, `clinics/${clinic.id}/patients`), {
+      // Mock implementation - replace with actual Firebase addDoc
+      const newPatient = {
         ...patientData,
+        id: Date.now().toString(),
         patientId,
         status: 'active',
         registrationDate: new Date(patientData.registrationDate),
-        birthDate: patientData.birthDate,
-        createdAt: serverTimestamp(),
-        createdBy: user.uid,
-        clinicId: clinic.id
-      });
+        birthDate: new Date(patientData.birthDate),
+        createdAt: new Date(),
+        createdBy: user?.uid || 'mock-user',
+        clinicId: clinic?.id || 'mock-clinic'
+      };
+      
+      // Add to local state (replace with Firebase integration)
+      setPatients(prev => [newPatient, ...prev]);
       
       setShowAddModal(false);
       alert('✅ Patient added successfully');
@@ -101,14 +146,16 @@ const EnhancedPatientManagement = ({ user, db, clinic, userProfile }) => {
     }
   };
 
-  // Update patient
+  // Update patient - replace with real Firebase integration
   const handleUpdatePatient = async (patientId, updates) => {
     try {
-      await updateDoc(doc(db, `clinics/${clinic.id}/patients`, patientId), {
-        ...updates,
-        updatedAt: serverTimestamp(),
-        updatedBy: user.uid
-      });
+      // Mock implementation - replace with actual Firebase updateDoc
+      setPatients(prev => prev.map(patient => 
+        patient.id === patientId 
+          ? { ...patient, ...updates, updatedAt: new Date(), updatedBy: user?.uid || 'mock-user' }
+          : patient
+      ));
+      
       alert('✅ Patient updated successfully');
     } catch (error) {
       console.error('Error updating patient:', error);
