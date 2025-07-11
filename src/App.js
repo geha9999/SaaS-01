@@ -99,16 +99,16 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
         }
     };
 
-    const handleCheckVerification = async () => {
-        setIsChecking(true);
-        try {
-            await onCheckVerification();
-        } catch (error) {
-            console.error('Error checking verification:', error);
-        } finally {
-            setIsChecking(false);
-        }
-    };
+    //const handleCheckVerification = async () => {
+    //    setIsChecking(true);
+    //    try {
+    //        await onCheckVerification();
+    //    } catch (error) {
+    //        console.error('Error checking verification:', error);
+    //    } finally {
+    //        setIsChecking(false);
+    //    }
+    //};
 
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
