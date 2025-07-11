@@ -51,8 +51,8 @@ const getFriendlyAuthError = (error) => {
 const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
 
 // --- UI Components ---
-const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> );
-const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
+const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" /> </div> 
+);const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
@@ -166,6 +166,7 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
         </div>
     );
 };
+
 // --- Success Screen After Registration ---
 const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
     return (
@@ -174,27 +175,44 @@ const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
                 <div className="bg-white p-8 rounded-xl shadow-lg text-center">
                     <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
                     <h2 className="text-2xl font-bold mb-4 text-gray-800">Registration Successful!</h2>
-                    <p className="text-gray-600 mb-6">
-                        Your clinic account has been created. We've sent a verification email to:
-                    </p>
-                    <p className="font-semibold text-blue-600 mb-6 break-all">
-                        {email}
-                    </p>
-                    <p className="text-sm text-gray-500 mb-8">
-                        Please check your email and click the verification link to activate your account. 
-                        Once verified, you can sign in and start using CLINICQ.
+                    
+                    <div className="bg-green-50 p-4 rounded-lg mb-6">
+                        <p className="text-green-800 text-sm font-medium mb-2">✅ Account Created Successfully</p>
+                        <p className="text-green-700 text-sm">
+                            Your clinic account has been created for:
+                        </p>
+                        <p className="font-semibold text-green-800 mt-1 break-all">
+                            {email}
+                        </p>
+                    </div>
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                        <p className="text-blue-800 text-sm font-medium mb-2">📧 Next Steps:</p>
+                        <ol className="text-blue-700 text-sm text-left space-y-1">
+                            <li>1. Check your email inbox (and spam folder)</li>
+                            <li>2. Find the CLINICQ verification email</li>
+                            <li>3. Click the verification link</li>
+                            <li>4. Return here and sign in</li>
+                        </ol>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-6">
+                        <strong>Important:</strong> You must verify your email before you can access CLINICQ.
                     </p>
 
                     <Button onClick={onBackToLogin} className="w-full">
                         <LogIn className="mr-2" size={20} />
                         Back to Sign In
                     </Button>
+                    
+                    <p className="text-xs text-gray-500 mt-4">
+                        Having trouble? Check your spam folder or contact support.
+                    </p>
                 </div>
             </div>
         </div>
     );
 };
-
 // --- Auth Page Component ---
 const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     const [isLoginView, setIsLoginView] = useState(true);
@@ -206,10 +224,18 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
     
+    // FIXED: Clear form when switching between login/signup
+    const switchAuthMode = () => {
+        setIsLoginView(!isLoginView);
+        setFormData({ email: '', password: '', clinicName: '' }); // Clear form
+        setAuthError(''); // Clear errors
+    };
+    
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         setAuthError('');
+        
         try {
             if (isLoginView) { 
                 await onLogin(formData.email, formData.password); 
@@ -218,10 +244,13 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
                 if (result && result.success) {
                     setRegisteredEmail(result.email);
                     setShowSuccessScreen(true);
+                    // Clear form after successful signup
+                    setFormData({ email: '', password: '', clinicName: '' });
                 }
             }
         } catch (error) {
             setAuthError(getFriendlyAuthError(error));
+        } finally {
             setIsSubmitting(false);
         }
     };
@@ -240,30 +269,100 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
             <div className="w-full max-w-sm mx-auto">
-                <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2"><Building />CLINICQ</h1>
+                <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2">
+                    <Building />CLINICQ
+                </h1>
                 <div className="bg-white p-8 rounded-xl shadow-lg">
-                    <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">{isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}</h2>
+                    <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">
+                        {isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}
+                    </h2>
+                    
                     <form onSubmit={handleSubmit} className="space-y-4 mt-6">
-                        {!isLoginView && (<Input label="Clinic Name" name="clinicName" type="text" value={formData.clinicName} onChange={handleChange} required />)}
-                        <Input label="Your Email Address" name="email" type="email" value={formData.email} onChange={handleChange} required />
-                        <Input label="Password" name="password" type="password" value={formData.password} onChange={handleChange} required />
+                        {!isLoginView && (
+                            <Input 
+                                label="Clinic Name" 
+                                name="clinicName" 
+                                type="text" 
+                                value={formData.clinicName} 
+                                onChange={handleChange} 
+                                required 
+                                placeholder="Enter your clinic name"
+                            />
+                        )}
+                        
+                        <Input 
+                            label="Your Email Address" 
+                            name="email" 
+                            type="email" 
+                            value={formData.email} 
+                            onChange={handleChange} 
+                            required 
+                            placeholder="Enter your email"
+                        />
+                        
+                        <Input 
+                            label="Password" 
+                            name="password" 
+                            type="password" 
+                            value={formData.password} 
+                            onChange={handleChange} 
+                            required 
+                            placeholder={isLoginView ? "Enter your password" : "Create a password (6+ characters)"}
+                        />
+                        
                         <Button type="submit" className="w-full !mt-6" disabled={isSubmitting}>
-                            {isSubmitting ? 'Processing...' : (isLoginView ? <><LogIn className="mr-2"/> Sign In</> : <><UserPlus className="mr-2"/> Register Clinic</>)}
+                            {isSubmitting ? (
+                                <div className="flex items-center justify-center gap-2">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                    {isLoginView ? 'Signing In...' : 'Creating Account...'}
+                                </div>
+                            ) : (
+                                isLoginView ? (
+                                    <>
+                                        <LogIn className="mr-2"/> Sign In
+                                    </>
+                                ) : (
+                                    <>
+                                        <UserPlus className="mr-2"/> Register Clinic
+                                    </>
+                                )
+                            )}
                         </Button>
-                        {authError && <p className="text-red-500 text-sm mt-4 text-center">{authError}</p>}
+                        
+                        {authError && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mt-4">
+                                {authError}
+                            </div>
+                        )}
                     </form>
+                    
                     <div className="mt-6 text-center text-sm">
-                        {isLoginView && (<button onClick={onForgotPasswordClick} className="text-blue-600 hover:underline">Forgot Password?</button>)}
+                        {isLoginView && (
+                            <button 
+                                onClick={onForgotPasswordClick} 
+                                className="text-blue-600 hover:underline"
+                            >
+                                Forgot Password?
+                            </button>
+                        )}
                     </div>
+                    
                     <div className="mt-4 text-center">
-                        <button onClick={() => { setIsLoginView(!isLoginView); setAuthError(''); }} className="text-sm text-blue-600 hover:underline">{isLoginView ? "Need to register a new clinic?" : "Already have an account? Sign In"}</button>
+                        <button 
+                            onClick={switchAuthMode} 
+                            className="text-sm text-blue-600 hover:underline"
+                        >
+                            {isLoginView 
+                                ? "Need to register a new clinic?" 
+                                : "Already have an account? Sign In"
+                            }
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
     );
 };
-
 // --- Onboarding Component (placeholder - you can replace with your actual onboarding) ---
 const OnboardingPage = ({ onComplete, userProfile, clinic }) => {
     return (
@@ -557,17 +656,20 @@ const App = () => {
         
         console.log('🚀 Starting sign-up process for:', email);
         
+        // Set a flag to prevent auth state changes from showing verification screen
+        const isSigningUp = true;
+        
         try {
             // Create user account
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = userCredential.user;
             console.log('✅ User created:', newUser.email);
             
-            // Send verification email BEFORE creating clinic data
+            // Send verification email IMMEDIATELY after creation
             await sendEmailVerification(newUser);
             console.log('✅ Verification email sent to:', email);
             
-            // Create clinic and user profile (but user can't access until verified)
+            // Create clinic and user profile in Firebase
             const batch = writeBatch(db);
             
             const clinicRef = doc(collection(db, "clinics"));
@@ -591,19 +693,26 @@ const App = () => {
             await batch.commit();
             console.log('✅ Clinic and user profile created');
             
-            // IMPORTANT: Sign out user immediately so they can't access until verified
+            // IMMEDIATELY sign out user to prevent verification screen flash
             await signOut(auth);
             console.log('✅ User signed out - must verify email first');
             
-            // Return success to show success screen
+            // Return success to trigger success screen
             return { success: true, email: email };
             
         } catch (error) {
             console.error('❌ Sign-up error:', error);
+            // If error occurs after user creation, make sure to sign them out
+            try {
+                if (auth.currentUser) {
+                    await signOut(auth);
+                }
+            } catch (signOutError) {
+                console.error('Error signing out after failed signup:', signOutError);
+            }
             throw error;
         }
     };
-
     const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
 
     const handleResendVerification = async () => {
