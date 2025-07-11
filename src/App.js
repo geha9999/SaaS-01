@@ -59,20 +59,41 @@ const Select = ({ label, children, ...props }) => ( <div> <label className="bloc
 const LoadingSpinner = ({ message = "Loading..." }) => (<div className="h-screen w-screen flex flex-col justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div><p className="mt-4 text-gray-600">{message}</p></div>);
 const ErrorDisplay = ({ message }) => (<div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{message}</div></div>);
 
-// --- Email Verification Screen ---
+// --- FIXED Email Verification Screen ---
 const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerification, onLogout }) => {
     const [isResending, setIsResending] = useState(false);
     const [resendMessage, setResendMessage] = useState('');
     const [isChecking, setIsChecking] = useState(false);
+    const [autoCheckCount, setAutoCheckCount] = useState(0);
+
+    // Auto-check verification status when component loads
+    useEffect(() => {
+        const autoCheck = async () => {
+            if (autoCheckCount < 3) { // Only auto-check 3 times
+                console.log(`Auto-checking verification status (attempt ${autoCheckCount + 1})`);
+                setAutoCheckCount(prev => prev + 1);
+                
+                try {
+                    await onCheckVerification();
+                } catch (error) {
+                    console.log('Auto-check failed:', error);
+                }
+            }
+        };
+
+        // Check immediately on load, then periodically
+        const timer = setTimeout(autoCheck, 2000);
+        return () => clearTimeout(timer);
+    }, [onCheckVerification, autoCheckCount]);
 
     const handleResendVerification = async () => {
         setIsResending(true);
         setResendMessage('');
         try {
             await onResendVerification();
-            setResendMessage('Verification email sent! Please check your inbox.');
+            setResendMessage('✅ Verification email sent! Please check your inbox and spam folder.');
         } catch (error) {
-            setResendMessage('Failed to send email. Please try again.');
+            setResendMessage('❌ Failed to send email. Please try again.');
         } finally {
             setIsResending(false);
         }
@@ -98,46 +119,62 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
                     <p className="text-gray-600 mb-6">
                         We've sent a verification email to:
                     </p>
-                    <p className="font-semibold text-blue-600 mb-6">
+                    <p className="font-semibold text-blue-600 mb-6 break-all">
                         {user?.email}
                     </p>
-                    <p className="text-sm text-gray-500 mb-8">
-                        Please click the link in the email to verify your account. 
-                        Once verified, you can access your clinic dashboard.
-                    </p>
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                        <p className="text-sm text-blue-800 font-medium mb-2">📧 Follow these steps:</p>
+                        <ol className="text-xs text-blue-700 text-left space-y-1">
+                            <li>1. Check your email inbox (and spam folder)</li>
+                            <li>2. Find the CLINICQ verification email</li>
+                            <li>3. Click the verification link in the email</li>
+                            <li>4. Return here - we'll detect it automatically</li>
+                        </ol>
+                    </div>
 
                     <div className="space-y-4">
-                        <Button 
+                        <button 
                             onClick={handleCheckVerification} 
-                            className="w-full"
+                            className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400 flex items-center justify-center gap-2"
                             disabled={isChecking}
                         >
                             {isChecking ? (
-                                'Checking...'
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                    Checking...
+                                </>
                             ) : (
                                 <>
-                                    <CheckCircle className="mr-2" size={20} />
+                                    <CheckCircle size={20} />
                                     I've Verified My Email
                                 </>
                             )}
-                        </Button>
+                        </button>
 
                         <button 
                             onClick={handleResendVerification}
                             disabled={isResending}
-                            className="w-full text-blue-600 hover:text-blue-700 underline text-sm"
+                            className="w-full text-blue-600 hover:text-blue-700 underline text-sm py-2 disabled:text-gray-400"
                         >
                             {isResending ? 'Sending...' : 'Resend verification email'}
                         </button>
 
                         {resendMessage && (
-                            <p className={`text-sm ${resendMessage.includes('sent') ? 'text-green-600' : 'text-red-600'}`}>
+                            <div className={`text-sm p-3 rounded-lg ${
+                                resendMessage.includes('✅') 
+                                    ? 'bg-green-50 text-green-700 border border-green-200' 
+                                    : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
                                 {resendMessage}
-                            </p>
+                            </div>
                         )}
                     </div>
 
                     <div className="mt-8 pt-6 border-t">
+                        <p className="text-xs text-gray-500 mb-3">
+                            Having trouble? Check your spam folder or contact support.
+                        </p>
                         <button 
                             onClick={onLogout}
                             className="text-sm text-gray-500 hover:text-gray-700 underline"
@@ -162,7 +199,7 @@ const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
                     <p className="text-gray-600 mb-6">
                         Your clinic account has been created. We've sent a verification email to:
                     </p>
-                    <p className="font-semibold text-blue-600 mb-6">
+                    <p className="font-semibold text-blue-600 mb-6 break-all">
                         {email}
                     </p>
                     <p className="text-sm text-gray-500 mb-8">
@@ -199,9 +236,11 @@ const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
             if (isLoginView) { 
                 await onLogin(formData.email, formData.password); 
             } else { 
-                await onSignUp(formData.email, formData.password, formData.clinicName);
-                setRegisteredEmail(formData.email);
-                setShowSuccessScreen(true);
+                const result = await onSignUp(formData.email, formData.password, formData.clinicName);
+                if (result && result.success) {
+                    setRegisteredEmail(result.email);
+                    setShowSuccessScreen(true);
+                }
             }
         } catch (error) {
             setAuthError(getFriendlyAuthError(error));
@@ -399,7 +438,7 @@ const App = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
 
-        // TEST FUNCTION - Remove this later
+    // TEST FUNCTION - Remove this later
     const testPaymentService = async () => {
         try {
             console.log('Testing NOWPayments connection...');
@@ -421,9 +460,9 @@ const App = () => {
                 setAuth(authInstance);
                 setDb(dbInstance);
 
-                const unsubscribe = onAuthStateChanged(authInstance, (authUser) => {
+                const unsubscribe = onAuthStateChanged(authInstance, async (authUser) => {
                     try {
-                        console.log('Auth state changed:', {
+                        console.log('🔍 Auth state changed:', {
                             user: authUser?.email || 'No user',
                             emailVerified: authUser?.emailVerified || false
                         });
@@ -433,21 +472,21 @@ const App = () => {
                         if (authUser) {
                             // Check if this is the SaaS owner
                             if (authUser.email === SAAS_OWNER_EMAIL) {
-                                console.log('SaaS owner detected - loading admin panel');
+                                console.log('👑 SaaS owner detected - loading admin panel');
                                 setAppState('admin');
                                 return;
                             }
                             
                             // For regular users, check email verification
                             if (authUser.emailVerified) {
-                                console.log('Email verified - checking onboarding status');
+                                console.log('✅ Email verified - checking onboarding status');
                                 setAppState('checking-onboarding');
                             } else {
-                                console.log('Email NOT verified - showing verification screen');
+                                console.log('❌ Email NOT verified - showing verification screen');
                                 setAppState('email-verification');
                             }
                         } else {
-                            console.log('No user - showing login screen');
+                            console.log('👤 No user - showing login screen');
                             setAppState('unauthenticated');
                             setUserProfile(null);
                             setClinic(null);
@@ -473,6 +512,7 @@ const App = () => {
 
         const checkOnboardingStatus = async () => {
             try {
+                console.log('🔍 Checking onboarding status for:', user.email);
                 const userProfileRef = doc(db, "users", user.uid);
                 const userProfileSnap = await getDoc(userProfileRef);
                 
@@ -491,14 +531,14 @@ const App = () => {
                     
                     // Check if onboarding is completed
                     if (userData.onboardingCompleted) {
-                        console.log('Onboarding completed - allowing access');
+                        console.log('✅ Onboarding completed - allowing access');
                         setAppState('authenticated');
                     } else {
-                        console.log('Onboarding not completed - showing onboarding');
+                        console.log('⚠️ Onboarding not completed - showing onboarding');
                         setAppState('onboarding');
                     }
                 } else {
-                    console.error('User profile not found');
+                    console.error('❌ User profile not found');
                     setAppState('error');
                 }
             } catch (error) {
@@ -511,66 +551,79 @@ const App = () => {
     }, [appState, user, db]);
 
     const handleLogin = async (email, password) => {
+        console.log('🔐 Attempting login for:', email);
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         
         // For SaaS owner, skip email verification check
         if (email === SAAS_OWNER_EMAIL) {
-            console.log('SaaS owner login successful');
+            console.log('👑 SaaS owner login successful');
             return userCredential;
         }
         
         // Check if email is verified for regular users
         if (!userCredential.user.emailVerified) {
-            console.log('Login attempt with unverified email');
+            console.log('⚠️ Login attempt with unverified email');
             return userCredential;
         }
         
-        console.log('Login successful with verified email');
+        console.log('✅ Login successful with verified email');
         return userCredential;
     };
 
+    // FIXED SIGN-UP FUNCTION
     const handleSignUp = async (email, password, clinicName) => {
         // Prevent registration with SaaS owner email
         if (email === SAAS_OWNER_EMAIL) {
             throw new Error('This email is reserved for system administration.');
         }
         
-        console.log('Starting sign-up process for:', email);
+        console.log('🚀 Starting sign-up process for:', email);
         
-        // Create user account
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const newUser = userCredential.user;
-        console.log('User created:', newUser.email);
-        
-        // Send verification email
-        await sendEmailVerification(newUser);
-        console.log('Verification email sent');
-        
-        // Create clinic and user profile (but user can't access until verified)
-        const batch = writeBatch(db);
-        const clinicRef = doc(collection(db, "clinics"));
-        batch.set(clinicRef, { 
-            name: clinicName, 
-            ownerId: newUser.uid, 
-            createdAt: serverTimestamp(),
-            status: 'pending_verification'
-        });
-        const userProfileRef = doc(db, "users", newUser.uid);
-        batch.set(userProfileRef, { 
-            email: newUser.email, 
-            clinicId: clinicRef.id, 
-            role: 'owner',
-            createdAt: serverTimestamp()
-        });
-        await batch.commit();
-        console.log('Clinic and user profile created');
-        
-        // IMMEDIATELY sign out the user so they can't access the app until verified
-        await signOut(auth);
-        console.log('User signed out - must verify email first');
-        
-        // Force the auth state to update
-        setAppState('unauthenticated');
+        try {
+            // Create user account
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const newUser = userCredential.user;
+            console.log('✅ User created:', newUser.email);
+            
+            // Send verification email BEFORE creating clinic data
+            await sendEmailVerification(newUser);
+            console.log('✅ Verification email sent to:', email);
+            
+            // Create clinic and user profile (but user can't access until verified)
+            const batch = writeBatch(db);
+            
+            const clinicRef = doc(collection(db, "clinics"));
+            batch.set(clinicRef, { 
+                name: clinicName, 
+                ownerId: newUser.uid, 
+                createdAt: serverTimestamp(),
+                status: 'pending_verification',
+                emailSent: true
+            });
+            
+            const userProfileRef = doc(db, "users", newUser.uid);
+            batch.set(userProfileRef, { 
+                email: newUser.email, 
+                clinicId: clinicRef.id, 
+                role: 'owner',
+                createdAt: serverTimestamp(),
+                emailVerificationSent: true
+            });
+            
+            await batch.commit();
+            console.log('✅ Clinic and user profile created');
+            
+            // IMPORTANT: Sign out user immediately so they can't access until verified
+            await signOut(auth);
+            console.log('✅ User signed out - must verify email first');
+            
+            // Return success to show success screen
+            return { success: true, email: email };
+            
+        } catch (error) {
+            console.error('❌ Sign-up error:', error);
+            throw error;
+        }
     };
 
     const handleForgotPassword = async (email) => sendPasswordResetEmail(auth, email);
@@ -578,29 +631,52 @@ const App = () => {
     const handleResendVerification = async () => {
         if (user) {
             await sendEmailVerification(user);
+            console.log('📧 Verification email resent to:', user.email);
         }
     };
 
+    // FIXED CHECK VERIFICATION FUNCTION
     const handleCheckVerification = async () => {
+        console.log('🔍 Checking email verification status...');
         setIsChecking(true);
+        
         try {
             if (user && db) {
+                // Force reload the user to get latest emailVerified status
                 await reload(user);
-                console.log('After reload - emailVerified:', user.emailVerified);
+                
+                // Add a small delay to ensure the reload completes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                console.log('🔄 After reload - emailVerified:', user.emailVerified);
+                
                 if (user.emailVerified) {
                     // Update clinic status to active
                     const userProfileRef = doc(db, "users", user.uid);
                     const userProfileSnap = await getDoc(userProfileRef);
+                    
                     if (userProfileSnap.exists()) {
                         const userData = userProfileSnap.data();
-                        const clinicRef = doc(db, "clinics", userData.clinicId);
-                        await setDoc(clinicRef, { status: 'active' }, { merge: true });
+                        if (userData.clinicId) {
+                            const clinicRef = doc(db, "clinics", userData.clinicId);
+                            await setDoc(clinicRef, { 
+                                status: 'active',
+                                emailVerifiedAt: serverTimestamp()
+                            }, { merge: true });
+                        }
                     }
+                    
+                    console.log('✅ Email verified successfully - proceeding to onboarding check');
                     setAppState('checking-onboarding');
+                } else {
+                    console.log('❌ Email not yet verified');
+                    // Don't show alert if this is an auto-check
+                    // alert('Email not yet verified. Please check your email and click the verification link first.');
                 }
             }
         } catch (error) {
             console.error('Error checking verification:', error);
+            // alert('Error checking verification status. Please try again.');
         } finally {
             setIsChecking(false);
         }
@@ -610,6 +686,8 @@ const App = () => {
         if (!user || !db || !userProfile) return;
 
         try {
+            console.log('🎯 Completing onboarding for:', user.email);
+            
             // Save consent data
             await addDoc(collection(db, "consents"), {
                 userId: user.uid,
@@ -634,7 +712,7 @@ const App = () => {
                 }, { merge: true });
             }
 
-            console.log('Onboarding completed successfully');
+            console.log('✅ Onboarding completed successfully');
             setAppState('authenticated');
         } catch (error) {
             console.error('Error completing onboarding:', error);
@@ -643,6 +721,7 @@ const App = () => {
     };
 
     const handleLogoutFromVerification = () => {
+        console.log('👋 Logging out from verification screen');
         signOut(auth);
     };
 
@@ -792,13 +871,13 @@ const Sidebar = ({ page, setPage, clinicName, onLogout }) => {
                     <p className="font-semibold text-lg text-gray-800 truncate">{clinicName || 'Loading...'}</p> 
                 </div> 
                 {navItems.map(item => ( 
-                    <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}> 
+                    <button key={item.id} onClick={() => setPage(item.id)} className={`w-full flex items-center px-4 py-3 my-1 rounded-lg transition-colors ${ page === item.id ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}> 
                         <item.icon className="w-5 h-5 mr-3" />
                         <span className="font-medium">{item.label}</span> 
                     </button> 
                 ))} 
             </nav> 
-            <div className="p-4 border-t">
+            <div className="p-4 border-t bg-white">
                 <button onClick={onLogout} className="w-full flex items-center text-sm text-red-500 hover:text-red-700">
                     <LogOut className="w-4 h-4 mr-2" />Logout
                 </button>
