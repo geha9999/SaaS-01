@@ -1,23 +1,22 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-    getAuth, 
-    onAuthStateChanged, 
-    createUserWithEmailAndPassword, 
-    signInWithEmailAndPassword, 
-    signOut, 
-    sendPasswordResetEmail,
-    sendEmailVerification,
-    reload
-} from 'firebase/auth';
-import { getFirestore, collection, doc, addDoc, setDoc, getDoc, onSnapshot, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle, Shield, FileText, Globe, CreditCard } from 'lucide-react';
+import React, { useState, useEffect, useMemo } 
+    from 'react';
+import { initializeApp } 
+    from 'firebase/app';
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
+         sendEmailVerification, reload, applyActionCode } 
+    from 'firebase/auth';
+import { getFirestore, collection, doc, addDoc, setDoc, getDoc, onSnapshot, query, where, serverTimestamp, writeBatch } 
+    from 'firebase/firestore';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } 
+    from 'recharts';
+import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical, LogOut, X, UserPlus, LogIn, Building, Briefcase, 
+         Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle, Shield, FileText, Globe, CreditCard } 
+    from 'lucide-react';
 
 // Import the AdminPanel component
-import AdminPanel from './AdminPanel';
-import NOWPaymentsService from './services/nowPayments';
-import AuthPage from './components/auth/AuthPage';
+import AdminPanel                                 from './AdminPanel';
+import NOWPaymentsService                         from './services/nowPayments';
+import AuthPage                                   from './components/auth/AuthPage';
 import { SAAS_OWNER_EMAIL, getFriendlyAuthError } from './utils/authHelpers';
 
 // --- Firebase Configuration ---
@@ -47,6 +46,7 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
     const [isResending, setIsResending] = useState(false);
     const [resendMessage, setResendMessage] = useState('');
     const [isChecking, setIsChecking] = useState(false);
+    const [checkAttempts, setCheckAttempts] = useState(0);
 
     const handleResendVerification = async () => {
         setIsResending(true);
@@ -63,6 +63,8 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
 
     const handleCheckVerification = async () => {
         setIsChecking(true);
+        setCheckAttempts(prev => prev + 1);
+        
         try {
             await onCheckVerification();
         } catch (error) {
@@ -78,20 +80,36 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
                 <div className="bg-white p-8 rounded-xl shadow-lg text-center">
                     <Mail className="mx-auto h-16 w-16 text-blue-500 mb-4" />
                     <h2 className="text-2xl font-bold mb-4 text-gray-800">Verify Your Email</h2>
-                    <p className="text-gray-600 mb-6">
-                        We've sent a verification email to:
-                    </p>
-                    <p className="font-semibold text-blue-600 mb-6 break-all">
-                        {user?.email}
-                    </p>
                     
                     <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                        <p className="text-sm text-blue-800 font-medium mb-2">📧 Follow these steps:</p>
-                        <ol className="text-xs text-blue-700 text-left space-y-1">
-                            <li>1. Check your email inbox (and spam folder)</li>
-                            <li>2. Find the CLINICQ verification email</li>
-                            <li>3. Click the verification link in the email</li>
-                            <li>4. Come back here and click the button below</li>
+                        <p className="text-blue-800 text-sm font-medium mb-2">📧 Verification Required</p>
+                        <p className="text-blue-700 text-sm mb-3">
+                            We've sent a verification email to:
+                        </p>
+                        <p className="font-semibold text-blue-800 break-all mb-4">
+                            {user?.email}
+                        </p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                        <p className="text-gray-800 text-sm font-medium mb-2">📋 Follow these steps:</p>
+                        <ol className="text-gray-700 text-sm text-left space-y-2">
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-600 font-bold">1.</span>
+                                <span>Check your email inbox (and spam folder)</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-600 font-bold">2.</span>
+                                <span>Find the CLINICQ verification email</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-600 font-bold">3.</span>
+                                <span>Click the verification link in the email</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-600 font-bold">4.</span>
+                                <span>Come back here and click the button below</span>
+                            </li>
                         </ol>
                     </div>
 
@@ -104,7 +122,7 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
                             {isChecking ? (
                                 <>
                                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                                    Checking...
+                                    Checking verification...
                                 </>
                             ) : (
                                 <>
@@ -131,23 +149,93 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
                                 {resendMessage}
                             </div>
                         )}
+
+                        {checkAttempts > 2 && (
+                            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-lg text-sm">
+                                <p className="font-medium mb-1">⚠️ Still having trouble?</p>
+                                <p>Make sure you clicked the verification link in your email first. Check your spam folder if you don't see the email.</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="mt-8 pt-6 border-t">
                         <p className="text-xs text-gray-500 mb-3">
-                            Having trouble? Check your spam folder or contact support.
+                            Need help? Contact support or try a different email address.
                         </p>
                         <button 
                             onClick={onLogout}
                             className="text-sm text-gray-500 hover:text-gray-700 underline"
                         >
-                            Sign out and use different email
+                            Use a different email address
                         </button>
                     </div>
                 </div>
             </div>
         </div>
     );
+};
+
+// --- Email Verification Success Screen ---
+const EmailVerificationSuccess = ({ onBackToLogin }) => {
+    return (
+        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
+            <div className="w-full max-w-md mx-auto">
+                <div className="bg-white p-8 rounded-xl shadow-lg text-center">
+                    <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">Email Verified Successfully!</h2>
+                    
+                    <div className="bg-green-50 p-4 rounded-lg mb-6">
+                        <p className="text-green-800 text-sm font-medium mb-2">✅ Verification Complete</p>
+                        <p className="text-green-700 text-sm">
+                            Your email has been verified successfully. You can now sign in to your CLINICQ account.
+                        </p>
+                    </div>
+                    
+                    <Button onClick={onBackToLogin} className="w-full">
+                        <LogIn className="mr-2" size={20} />
+                        Continue to Sign In
+                    </Button>
+                    
+                    <p className="text-xs text-gray-500 mt-4">
+                        Welcome to CLINICQ! Your clinic management system is ready.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Email Verification From URL ---
+const handleEmailVerificationFromURL = async (auth, setAppState) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = urlParams.get('mode');
+    const actionCode = urlParams.get('oobCode');
+    
+    console.log('🔍 Checking URL parameters:', { mode, actionCode: actionCode ? 'present' : 'none' });
+    
+    if (mode === 'verifyEmail' && actionCode) {
+        try {
+            console.log('📧 Processing email verification from URL...');
+            // Apply the email verification
+            await applyActionCode(auth, actionCode);
+            console.log('✅ Email verification applied successfully');
+            
+            // Clear the URL parameters to clean up the address bar
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Show success page
+            setAppState('email-verification-success');
+            return true;
+        } catch (error) {
+            console.error('❌ Error applying email verification:', error);
+            alert('Error verifying email. The link may be expired or already used.');
+            // Clear URL and go back to login
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setAppState('unauthenticated');
+            return false;
+        }
+    }
+    return false;
 };
 
 // --- Onboarding Component (placeholder - you can replace with your actual onboarding) ---
@@ -323,44 +411,54 @@ const App = () => {
                 const dbInstance = getFirestore(app);
                 setAuth(authInstance);
                 setDb(dbInstance);
-
-                const unsubscribe = onAuthStateChanged(authInstance, async (authUser) => {
-                    try {
-                        console.log('🔍 Auth state changed:', {
-                            user: authUser?.email || 'No user',
-                            emailVerified: authUser?.emailVerified || false
-                        });
-                        
-                        setUser(authUser);
-                        
-                        if (authUser) {
-                            // Check if this is the SaaS owner
-                            if (authUser.email === SAAS_OWNER_EMAIL) {
-                                console.log('👑 SaaS owner detected - loading admin panel');
-                                setAppState('admin');
-                                return;
-                            }
-                            
-                            // For regular users, check email verification
-                            if (authUser.emailVerified) {
-                                console.log('✅ Email verified - checking onboarding status');
-                                setAppState('checking-onboarding');
-                            } else {
-                                console.log('❌ Email NOT verified - showing verification screen');
-                                setAppState('email-verification');
-                            }
-                        } else {
-                            console.log('👤 No user - showing login screen');
-                            setAppState('unauthenticated');
-                            setUserProfile(null);
-                            setClinic(null);
-                        }
-                    } catch (error) {
-                        console.error('Error in auth state change:', error);
-                        setAppState('error');
+    
+                // Check for email verification in URL first (before setting up auth listener)
+                handleEmailVerificationFromURL(authInstance, setAppState).then((wasVerifiedFromURL) => {
+                    if (wasVerifiedFromURL) {
+                        console.log('✅ Email verified from URL - showing success page');
+                        return; // Don't set up auth listener yet, show success page first
                     }
+    
+                    // Set up auth state listener only if not handling URL verification
+                    const unsubscribe = onAuthStateChanged(authInstance, async (authUser) => {
+                        try {
+                            console.log('🔍 Auth state changed:', {
+                                user: authUser?.email || 'No user',
+                                emailVerified: authUser?.emailVerified || false
+                            });
+                            
+                            setUser(authUser);
+                            
+                            if (authUser) {
+                                // Check if this is the SaaS owner
+                                if (authUser.email === SAAS_OWNER_EMAIL) {
+                                    console.log('👑 SaaS owner detected - loading admin panel');
+                                    setAppState('admin');
+                                    return;
+                                }
+                                
+                                // For regular users, check email verification
+                                if (authUser.emailVerified) {
+                                    console.log('✅ Email verified - checking onboarding status');
+                                    setAppState('checking-onboarding');
+                                } else {
+                                    console.log('❌ Email NOT verified - showing verification screen');
+                                    setAppState('email-verification');
+                                }
+                            } else {
+                                console.log('👤 No user - showing login screen');
+                                setAppState('unauthenticated');
+                                setUserProfile(null);
+                                setClinic(null);
+                            }
+                        } catch (error) {
+                            console.error('Error in auth state change:', error);
+                            setAppState('error');
+                        }
+                    });
+                    
+                    return () => unsubscribe();
                 });
-                return () => unsubscribe();
             } else {
                 setAppState('error');
             }
@@ -434,6 +532,10 @@ const App = () => {
         return userCredential;
     };
 
+    const handleBackToLoginFromSuccess = () => {
+        setAppState('unauthenticated');
+    };
+    
     // FIXED SIGN-UP FUNCTION
     const handleSignUp = async (email, password, clinicName) => {
         // Prevent registration with SaaS owner email
@@ -622,6 +724,14 @@ const App = () => {
                 onResendVerification={handleResendVerification}
                 onCheckVerification={handleCheckVerification}
                 onLogout={handleLogoutFromVerification}
+            />
+        );
+    }
+
+    if (appState === 'email-verification-success') {
+        return (
+            <EmailVerificationSuccess 
+                onBackToLogin={handleBackToLoginFromSuccess}
             />
         );
     }
