@@ -1,10 +1,42 @@
-import React, { useState, useEffect } from 'react';
+// Initialize with default values if no clinic data provided
+  useEffect(() => {
+    if (clinic) {
+      setClinicData(prev => ({
+        ...prev,
+        name: clinic.name || '',
+        address: clinic.address || '',
+        phone: clinic.phone || '',
+        email: clinic.email || '',
+        website: clinic.website || '',
+        description: clinic.description || '',
+        logo: clinic.logo || null,
+        operatingHours: clinic.operatingHours || prev.operatingHours,
+        services: clinic.services || [],
+        specializations: clinic.specializations || [],
+        facilities: clinic.facilities || []
+      }));
+    }
+    
+    if (userProfile) {
+      setManagerData(prev => ({
+        ...prev,
+        name: userProfile.name || '',
+        title: userProfile.title || 'Clinic Manager',
+        phone: userProfile.phone || '',
+        email: user?.email || '',
+        bio: userProfile.bio || ''
+      }));
+    }
+    
+    if (clinic?.notificationSettings) {
+      setNotificationSettings(clinic.notificationSettings);
+    }
+  }, [clinic, userProfile, user?.email]);import React, { useState, useEffect } from 'react';
 import { 
   Building, Upload, Save, Edit3, Users, Phone, Mail, 
   MapPin, Globe, Camera, User, Shield, Settings,
   CreditCard, Bell, Lock, Eye, EyeOff, Trash2, Plus
 } from 'lucide-react';
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 const ClinicSettingsPage = ({ user, db, clinic, userProfile, onClinicUpdate }) => {
   const [activeTab, setActiveTab] = useState('general');
@@ -88,25 +120,31 @@ const ClinicSettingsPage = ({ user, db, clinic, userProfile, onClinicUpdate }) =
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update clinic data
-      const clinicRef = doc(db, 'clinics', clinic.id);
-      await updateDoc(clinicRef, {
+      // Mock implementation - replace with actual Firebase integration
+      console.log('Saving clinic data:', clinicData);
+      console.log('Saving manager data:', managerData);
+      console.log('Saving notification settings:', notificationSettings);
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update clinic data with timestamp
+      const updatedClinicData = {
         ...clinicData,
         notificationSettings,
-        updatedAt: serverTimestamp(),
-        updatedBy: user.uid
-      });
-
-      // Update user profile
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.uid || 'mock-user'
+      };
+      
+      // Update manager data with timestamp
+      const updatedManagerData = {
         ...managerData,
-        updatedAt: serverTimestamp()
-      });
-
-      // Notify parent component
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Notify parent component with updated data
       if (onClinicUpdate) {
-        onClinicUpdate({ ...clinic, ...clinicData });
+        onClinicUpdate({ ...clinic, ...updatedClinicData });
       }
 
       setIsEditing(false);
