@@ -64,27 +64,6 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
     const [isResending, setIsResending] = useState(false);
     const [resendMessage, setResendMessage] = useState('');
     const [isChecking, setIsChecking] = useState(false);
-    const [autoCheckCount, setAutoCheckCount] = useState(0);
-
-    // Auto-check verification status when component loads
-    useEffect(() => {
-        const autoCheck = async () => {
-            if (autoCheckCount < 3) { // Only auto-check 3 times
-                console.log(`Auto-checking verification status (attempt ${autoCheckCount + 1})`);
-                setAutoCheckCount(prev => prev + 1);
-                
-                try {
-                    await onCheckVerification();
-                } catch (error) {
-                    console.log('Auto-check failed:', error);
-                }
-            }
-        };
-
-        // Check immediately on load, then periodically
-        const timer = setTimeout(autoCheck, 2000);
-        return () => clearTimeout(timer);
-    }, [onCheckVerification, autoCheckCount]);
 
     const handleResendVerification = async () => {
         setIsResending(true);
@@ -99,16 +78,16 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
         }
     };
 
-    //const handleCheckVerification = async () => {
-    //    setIsChecking(true);
-    //    try {
-    //        await onCheckVerification();
-    //    } catch (error) {
-    //        console.error('Error checking verification:', error);
-    //    } finally {
-    //        setIsChecking(false);
-    //    }
-    //};
+    const handleCheckVerification = async () => {
+        setIsChecking(true);
+        try {
+            await onCheckVerification();
+        } catch (error) {
+            console.error('Error checking verification:', error);
+        } finally {
+            setIsChecking(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
@@ -129,7 +108,7 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
                             <li>1. Check your email inbox (and spam folder)</li>
                             <li>2. Find the CLINICQ verification email</li>
                             <li>3. Click the verification link in the email</li>
-                            <li>4. Return here - we'll detect it automatically</li>
+                            <li>4. Come back here and click the button below</li>
                         </ol>
                     </div>
 
@@ -187,7 +166,6 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
         </div>
     );
 };
-
 // --- Success Screen After Registration ---
 const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
     return (
