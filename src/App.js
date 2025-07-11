@@ -13,7 +13,7 @@ import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical,
          Send, Mail, Settings as SettingsIcon, AlertCircle, CheckCircle, Shield, FileText, Globe, CreditCard } 
     from 'lucide-react';
 
-// Import the AdminPanel component
+// Import the component
 import AdminPanel                                 from './AdminPanel';
 import NOWPaymentsService                         from './services/nowPayments';
 import AuthPage                                   from './components/auth/AuthPage';
@@ -22,57 +22,16 @@ import { SAAS_OWNER_EMAIL, getFriendlyAuthError } from './utils/authHelpers';
 // Add these imports at the top of your App.js (after your existing imports):
 
 // UI Components (if you moved them to separate files)
-import Button from './components/ui/Button';
-import Input from './components/ui/Input';
+import Button     from './components/ui/Button';
+import Input      from './components/ui/Input';
 
-// OR if you kept them in App.js, make sure these component definitions exist:
-const Input = ({ label, ...props }) => ( 
-    <div> 
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> 
-        <input 
-            {...props} 
-            className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-        /> 
-    </div> 
-);
-
-const Button = ({ children, className = '', ...props }) => ( 
-    <button 
-        {...props} 
-        className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}
-    > 
-        {children} 
-    </button> 
-);
-
-
-
-
-
-//**************************************************
-
-
-// --- Firebase Configuration ---
-const firebaseConfig = {
-    apiKey: process.env.REACT_APP_API_KEY,
-    authDomain: process.env.REACT_APP_AUTH_DOMAIN,
-    projectId: process.env.REACT_APP_PROJECT_ID,
-    storageBucket: process.env.REACT_APP_STORAGE_BUCKET,
-    messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
-    appId: process.env.REACT_APP_APP_ID
-};
-
-// --- Define the SaaS owner email ---
-//const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
-
-// --- UI Components ---
-//const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" /> </div> );
-//const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
+// UI Components (only the ones NOT imported from separate files)
 const Card = ({ children }) => ( 
     <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> 
         {children} 
     </div> 
 );
+
 const Modal = ({ children, onClose, title }) => ( 
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> 
         <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> 
@@ -98,8 +57,41 @@ const Select = ({ label, children, ...props }) => (
     </div> 
 );
 
-const LoadingSpinner = ({ message = "Loading..." }) => (<div className="h-screen w-screen flex flex-col justify-center items-center bg-gray-100"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div><p className="mt-4 text-gray-600">{message}</p></div>);
-const ErrorDisplay = ({ message }) => (<div className="h-screen w-screen flex justify-center items-center bg-gray-100"><div className="text-center text-red-500 font-semibold p-4">{message}</div></div>);
+const LoadingSpinner = ({ message = "Loading..." }) => (
+    <div className="h-screen w-screen flex flex-col justify-center items-center bg-gray-100">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <p className="mt-4 text-gray-600">{message}</p>
+    </div>
+);
+
+const ErrorDisplay = ({ message }) => (
+    <div className="h-screen w-screen flex justify-center items-center bg-gray-100">
+        <div className="text-center text-red-500 font-semibold p-4">{message}</div>
+    </div>
+);
+
+
+
+
+//**************************************************
+
+
+// --- Firebase Configuration ---
+const firebaseConfig = {
+    apiKey: process.env.REACT_APP_API_KEY,
+    authDomain: process.env.REACT_APP_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_APP_ID
+};
+
+// --- Define the SaaS owner email ---
+//const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
+
+// --- UI Components ---
+//const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" /> </div> );
+//const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 
 // --- FIXED Email Verification Screen ---
 const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerification, onLogout }) => {
@@ -493,56 +485,6 @@ const App = () => {
                 setAuth(authInstance);
                 setDb(dbInstance);
                 
-                /*
-                // Check for email verification in URL first (before setting up auth listener)
-                handleEmailVerificationFromURL(authInstance, setAppState).then((wasVerifiedFromURL) => {
-                    if (wasVerifiedFromURL) {
-                        console.log('✅ Email verified from URL - showing success page');
-                        return; // Don't set up auth listener yet, show success page first
-                    }
-    
-                    // Set up auth state listener only if not handling URL verification
-                    const unsubscribe = onAuthStateChanged(authInstance, async (authUser) => {
-                        try {
-                            console.log('🔍 Auth state changed:', {
-                                user: authUser?.email || 'No user',
-                                emailVerified: authUser?.emailVerified || false
-                            });
-                            
-                            setUser(authUser);
-                            
-                            if (authUser) {
-                                // Check if this is the SaaS owner
-                                if (authUser.email === SAAS_OWNER_EMAIL) {
-                                    console.log('👑 SaaS owner detected - loading admin panel');
-                                    setAppState('admin');
-                                    return;
-                                }
-                                
-                                // For regular users, check email verification
-                                if (authUser.emailVerified) {
-                                    console.log('✅ Email verified - checking onboarding status');
-                                    setAppState('checking-onboarding');
-                                } else {
-                                    console.log('❌ Email NOT verified - showing verification screen');
-                                    setAppState('email-verification');
-                                }
-                            } else {
-                                console.log('👤 No user - showing login screen');
-                                setAppState('unauthenticated');
-                                setUserProfile(null);
-                                setClinic(null);
-                            }
-                        } catch (error) {
-                            console.error('Error in auth state change:', error);
-                            setAppState('error');
-                        }
-                    });
-                    
-                    return () => unsubscribe();
-                });
-                */
-
                 // Simple auth state listener (no complex URL handling for now)
                 const unsubscribe = onAuthStateChanged(authInstance, async (authUser) => {
                     try {
