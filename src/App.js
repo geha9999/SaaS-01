@@ -17,6 +17,8 @@ import { Users, Calendar, DollarSign, LayoutDashboard, PlusCircle, MoreVertical,
 // Import the AdminPanel component
 import AdminPanel from './AdminPanel';
 import NOWPaymentsService from './services/nowPayments';
+import AuthPage from './components/auth/AuthPage';
+import { SAAS_OWNER_EMAIL, getFriendlyAuthError } from './utils/authHelpers';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -28,31 +30,12 @@ const firebaseConfig = {
     appId: process.env.REACT_APP_APP_ID
 };
 
-// --- Helper function for user-friendly error messages ---
-const getFriendlyAuthError = (error) => {
-    console.log('Auth error details:', error);
-    if (!error || !error.code) return 'An unexpected error occurred. Please try again.';
-    switch (error.code) {
-        case 'auth/email-already-in-use': return 'This email address is already registered. Please try signing in instead.';
-        case 'auth/wrong-password': return 'Incorrect password. Please try again.';
-        case 'auth/user-not-found': return 'No account found with this email. Please check the email or register a new clinic.';
-        case 'auth/invalid-email': return 'Please enter a valid email address.';
-        case 'auth/weak-password': return 'The password is too weak. It must be at least 6 characters long.';
-        case 'auth/invalid-credential': return 'Invalid email or password. Please check your credentials and try again.';
-        case 'auth/invalid-login-credentials': return 'Invalid email or password. Please check your credentials and try again.';
-        case 'auth/too-many-requests': return 'Too many failed attempts. Please wait a moment and try again.';
-        case 'auth/network-request-failed': return 'Network error. Please check your internet connection.';
-        case 'auth/user-disabled': return 'This account has been disabled. Please contact support.';
-        default: return `Authentication error: ${error.message || 'Please try again.'}`;
-    }
-};
-
 // --- Define the SaaS owner email ---
-const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
+//const SAAS_OWNER_EMAIL = 'alteaworld.io@gmail.com'; // Replace with your actual admin email
 
 // --- UI Components ---
-const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" /> </div> 
-);const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
+//const Input = ({ label, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <input {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" /> </div> );
+//const Button = ({ children, className = '', ...props }) => ( <button {...props} className={`bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed ${className}`}> {children} </button> );
 const Card = ({ children }) => ( <div className="bg-white p-2 sm:p-4 rounded-xl shadow-md"> {children} </div> );
 const Modal = ({ children, onClose, title }) => ( <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}> <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}> <div className="flex justify-between items-center p-4 border-b"> <h3 className="text-xl font-semibold">{title}</h3> <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200"> <X size={20} /> </button> </div> <div className="p-6"> {children} </div> </div> </div> );
 const Select = ({ label, children, ...props }) => ( <div> <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label> <select {...props} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"> {children} </select> </div> );
@@ -167,202 +150,6 @@ const EmailVerificationScreen = ({ user, db, onResendVerification, onCheckVerifi
     );
 };
 
-// --- Success Screen After Registration ---
-const RegistrationSuccessScreen = ({ email, onBackToLogin }) => {
-    return (
-        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
-            <div className="w-full max-w-md mx-auto">
-                <div className="bg-white p-8 rounded-xl shadow-lg text-center">
-                    <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
-                    <h2 className="text-2xl font-bold mb-4 text-gray-800">Registration Successful!</h2>
-                    
-                    <div className="bg-green-50 p-4 rounded-lg mb-6">
-                        <p className="text-green-800 text-sm font-medium mb-2">✅ Account Created Successfully</p>
-                        <p className="text-green-700 text-sm">
-                            Your clinic account has been created for:
-                        </p>
-                        <p className="font-semibold text-green-800 mt-1 break-all">
-                            {email}
-                        </p>
-                    </div>
-                    
-                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                        <p className="text-blue-800 text-sm font-medium mb-2">📧 Next Steps:</p>
-                        <ol className="text-blue-700 text-sm text-left space-y-1">
-                            <li>1. Check your email inbox (and spam folder)</li>
-                            <li>2. Find the CLINICQ verification email</li>
-                            <li>3. Click the verification link</li>
-                            <li>4. Return here and sign in</li>
-                        </ol>
-                    </div>
-                    
-                    <p className="text-sm text-gray-600 mb-6">
-                        <strong>Important:</strong> You must verify your email before you can access CLINICQ.
-                    </p>
-
-                    <Button onClick={onBackToLogin} className="w-full">
-                        <LogIn className="mr-2" size={20} />
-                        Back to Sign In
-                    </Button>
-                    
-                    <p className="text-xs text-gray-500 mt-4">
-                        Having trouble? Check your spam folder or contact support.
-                    </p>
-                </div>
-            </div>
-        </div>
-    );
-};
-// --- Auth Page Component ---
-const AuthPage = ({ onLogin, onSignUp, onForgotPasswordClick }) => {
-    const [isLoginView, setIsLoginView] = useState(true);
-    const [formData, setFormData] = useState({ email: '', password: '', clinicName: '' });
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [authError, setAuthError] = useState('');
-    const [showSuccessScreen, setShowSuccessScreen] = useState(false);
-    const [registeredEmail, setRegisteredEmail] = useState('');
-    
-    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-    
-    // FIXED: Clear form when switching between login/signup
-    const switchAuthMode = () => {
-        setIsLoginView(!isLoginView);
-        setFormData({ email: '', password: '', clinicName: '' }); // Clear form
-        setAuthError(''); // Clear errors
-    };
-    
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        setAuthError('');
-        
-        try {
-            if (isLoginView) { 
-                await onLogin(formData.email, formData.password); 
-            } else { 
-                const result = await onSignUp(formData.email, formData.password, formData.clinicName);
-                if (result && result.success) {
-                    setRegisteredEmail(result.email);
-                    setShowSuccessScreen(true);
-                    // Clear form after successful signup
-                    setFormData({ email: '', password: '', clinicName: '' });
-                }
-            }
-        } catch (error) {
-            setAuthError(getFriendlyAuthError(error));
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleBackToLogin = () => {
-        setShowSuccessScreen(false);
-        setIsLoginView(true);
-        setFormData({ email: '', password: '', clinicName: '' });
-        setAuthError('');
-    };
-
-    if (showSuccessScreen) {
-        return <RegistrationSuccessScreen email={registeredEmail} onBackToLogin={handleBackToLogin} />;
-    }
-
-    return (
-        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
-            <div className="w-full max-w-sm mx-auto">
-                <h1 className="text-4xl font-bold text-blue-600 text-center mb-8 flex items-center justify-center gap-2">
-                    <Building />CLINICQ
-                </h1>
-                <div className="bg-white p-8 rounded-xl shadow-lg">
-                    <h2 className="text-2xl font-bold text-center mb-2 text-gray-800">
-                        {isLoginView ? 'Clinic Portal Login' : 'Register Your Clinic'}
-                    </h2>
-                    
-                    <form onSubmit={handleSubmit} className="space-y-4 mt-6">
-                        {!isLoginView && (
-                            <Input 
-                                label="Clinic Name" 
-                                name="clinicName" 
-                                type="text" 
-                                value={formData.clinicName} 
-                                onChange={handleChange} 
-                                required 
-                                placeholder="Enter your clinic name"
-                            />
-                        )}
-                        
-                        <Input 
-                            label="Your Email Address" 
-                            name="email" 
-                            type="email" 
-                            value={formData.email} 
-                            onChange={handleChange} 
-                            required 
-                            placeholder="Enter your email"
-                        />
-                        
-                        <Input 
-                            label="Password" 
-                            name="password" 
-                            type="password" 
-                            value={formData.password} 
-                            onChange={handleChange} 
-                            required 
-                            placeholder={isLoginView ? "Enter your password" : "Create a password (6+ characters)"}
-                        />
-                        
-                        <Button type="submit" className="w-full !mt-6" disabled={isSubmitting}>
-                            {isSubmitting ? (
-                                <div className="flex items-center justify-center gap-2">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                                    {isLoginView ? 'Signing In...' : 'Creating Account...'}
-                                </div>
-                            ) : (
-                                isLoginView ? (
-                                    <>
-                                        <LogIn className="mr-2"/> Sign In
-                                    </>
-                                ) : (
-                                    <>
-                                        <UserPlus className="mr-2"/> Register Clinic
-                                    </>
-                                )
-                            )}
-                        </Button>
-                        
-                        {authError && (
-                            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mt-4">
-                                {authError}
-                            </div>
-                        )}
-                    </form>
-                    
-                    <div className="mt-6 text-center text-sm">
-                        {isLoginView && (
-                            <button 
-                                onClick={onForgotPasswordClick} 
-                                className="text-blue-600 hover:underline"
-                            >
-                                Forgot Password?
-                            </button>
-                        )}
-                    </div>
-                    
-                    <div className="mt-4 text-center">
-                        <button 
-                            onClick={switchAuthMode} 
-                            className="text-sm text-blue-600 hover:underline"
-                        >
-                            {isLoginView 
-                                ? "Need to register a new clinic?" 
-                                : "Already have an account? Sign In"
-                            }
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
 // --- Onboarding Component (placeholder - you can replace with your actual onboarding) ---
 const OnboardingPage = ({ onComplete, userProfile, clinic }) => {
     return (
